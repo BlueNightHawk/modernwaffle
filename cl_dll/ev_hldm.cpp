@@ -60,7 +60,223 @@ static int tracerCount[MAX_PLAYERS];
 void V_PunchAxis(int axis, float punch);
 void VectorAngles(const float* forward, float* angles);
 
+void EV_WeaponAnimation(int iAnim, int iBody, bool bBlend = false);
+
 extern cvar_t* cl_lw;
+
+// RENDERERS START
+#include "r_studioint.h"
+#include "com_model.h"
+#include "bsprenderer.h"
+#include "particle_engine.h"
+#include "com_weapons.h"
+
+#include "studio.h"
+#include "StudioModelRenderer.h"
+#include "GameStudioModelRenderer.h"
+
+extern CGameStudioModelRenderer g_StudioRenderer;
+extern engine_studio_api_t IEngineStudio;
+// RENDERERS END
+
+float g_flSetAnimDelay = 0.0f;
+
+void EV_WeaponAnimation(int iAnim, int iBody, bool bBlend)
+{
+	auto p = gEngfuncs.GetViewModel();
+
+	p->latched.prevsequence = p->curstate.sequence;
+	gEngfuncs.pEventAPI->EV_WeaponAnimation(iAnim, (iBody != 0) ? iBody : p->curstate.body);
+
+	// doesnt do anything rn
+	if (!bBlend)
+		p->latched.prevsequence = iAnim;
+
+	g_flSetAnimDelay = gEngfuncs.GetClientTime() + 0.4f;
+}
+
+// RENDERERS START
+char* EV_HLDM_HDDecal(pmtrace_t* ptr, physent_t* pe, float* vecSrc, float* vecEnd)
+{
+	if (gEngfuncs.PM_PointContents(ptr->endpos, NULL) == CONTENT_SKY)
+		return 0;
+
+	// hit the world, try to play sound based on texture material type
+	char chTextureType = 0;
+	int entity;
+	char* pStart;
+	char* pTextureName;
+	char texname[64];
+	char szbuffer[64];
+	static char decalname[32];
+
+	entity = gEngfuncs.pEventAPI->EV_IndexFromTrace(ptr);
+
+	if (pe && pe->solid == SOLID_BSP)
+	{
+		// Nothing
+		if (vecSrc == 0 && vecEnd == 0)
+		{
+			// hit body
+			chTextureType = 0;
+		}
+		else
+		{
+
+			// get texture from entity or world (world is ent(0))
+			pTextureName = (char*)gEngfuncs.pEventAPI->EV_TraceTexture(ptr->ent, vecSrc, vecEnd);
+			pStart = pTextureName;
+
+			if (pTextureName && strcmp("black", pTextureName))
+			{
+				strcpy(texname, pTextureName);
+				pTextureName = texname;
+
+				// strip leading '-0' or '+0~' or '{' or '!'
+				if (*pTextureName == '-' || *pTextureName == '+')
+				{
+					pTextureName += 2;
+				}
+
+				if (*pTextureName == '{' || *pTextureName == '!' || *pTextureName == '~' || *pTextureName == ' ')
+				{
+					pTextureName++;
+				}
+
+				// '}}'
+				strcpy(szbuffer, pTextureName);
+				szbuffer[CBTEXTURENAMEMAX - 1] = 0;
+
+				// get texture type
+				chTextureType = PM_FindTextureType(szbuffer);
+			}
+			else
+			{
+				return FALSE;
+			}
+		}
+	}
+
+	if (pStart[0] == '{')
+		return 0;
+
+	cl_entity_t* pHit = gEngfuncs.GetEntityByIndex(gEngfuncs.pEventAPI->EV_IndexFromTrace(ptr));
+
+	if (pHit->curstate.rendermode == kRenderTransColor && pHit->curstate.renderamt == 0)
+	{
+		if (chTextureType == CHAR_TEX_CONCRETE)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_METAL)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_GRATE)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_DIRT)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("dirt_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_VENT)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_TILE)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_WOOD)
+		{
+			sprintf(decalname, "shot_wood");
+			gParticleEngine.CreateCluster("wood_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_COMPUTER)
+		{
+			sprintf(decalname, "shot");
+		}
+		else if (chTextureType == CHAR_TEX_GLASS)
+		{
+			sprintf(decalname, "shot_glass");
+			gParticleEngine.CreateCluster("glass_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+
+		g_StudioRenderer.StudioDecalExternal(ptr->endpos, ptr->plane.normal, decalname);
+		return FALSE;
+	}
+
+	if (pe->classnumber == 1 && pHit->curstate.renderamt)
+	{
+		sprintf(decalname, "shot_glass");
+		gParticleEngine.CreateCluster("glass_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+	}
+	else if (pe->rendermode != kRenderNormal && pHit->curstate.renderamt)
+	{
+		sprintf(decalname, "shot_glass");
+		gParticleEngine.CreateCluster("glass_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+	}
+	else
+	{
+		if (chTextureType == CHAR_TEX_CONCRETE)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_METAL)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_GRATE)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_DIRT)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("dirt_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_VENT)
+		{
+			sprintf(decalname, "shot_metal");
+		}
+		else if (chTextureType == CHAR_TEX_TILE)
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_WOOD)
+		{
+			sprintf(decalname, "shot_wood");
+			gParticleEngine.CreateCluster("wood_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else if (chTextureType == CHAR_TEX_COMPUTER)
+		{
+			sprintf(decalname, "shot");
+		}
+		else if (chTextureType == CHAR_TEX_GLASS)
+		{
+			sprintf(decalname, "shot_glass");
+			gParticleEngine.CreateCluster("glass_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+		else
+		{
+			sprintf(decalname, "shot");
+			gParticleEngine.CreateCluster("concrete_impact_cluster.txt", ptr->endpos, ptr->plane.normal, 0);
+		}
+	}
+	return decalname;
+}
+// RENDERERS END
 
 // play a strike sound based on the texture that was hit by the attack traceline.  VecSrc/VecEnd are the
 // original traceline endpoints used by the attacker, iBulletType is the type of bullet that hit the texture.
@@ -248,7 +464,10 @@ void EV_HLDM_GunshotDecalTrace(pmtrace_t* pTrace, char* decalName)
 	int iRand;
 	physent_t* pe;
 
-	gEngfuncs.pEfxAPI->R_BulletImpactParticles(pTrace->endpos);
+	// RENDERERS START
+	if (gParticleEngine.m_pCvarDrawParticles->value <= 0)
+		gEngfuncs.pEfxAPI->R_BulletImpactParticles(pTrace->endpos);
+	// RENDERERS END
 
 	iRand = gEngfuncs.pfnRandomLong(0, 0x7FFF);
 	if (iRand < (0x7fff / 2)) // not every bullet makes a sound.
@@ -275,19 +494,19 @@ void EV_HLDM_GunshotDecalTrace(pmtrace_t* pTrace, char* decalName)
 
 	pe = gEngfuncs.pEventAPI->EV_GetPhysent(pTrace->ent);
 
-	// Only decal brush models such as the world etc.
-	if (decalName && '\0' != decalName[0] && pe && (pe->solid == SOLID_BSP || pe->movetype == MOVETYPE_PUSHSTEP))
+// RENDERERS START
+	//  Only decal brush models such as the world etc.
+	if (decalName && decalName[0] && pe && (pe->solid == SOLID_BSP || pe->movetype == MOVETYPE_PUSHSTEP))
 	{
-		if (CVAR_GET_FLOAT("r_decals"))
-		{
-			gEngfuncs.pEfxAPI->R_DecalShoot(
-				gEngfuncs.pEfxAPI->Draw_DecalIndex(gEngfuncs.pEfxAPI->Draw_DecalIndexFromName(decalName)),
-				gEngfuncs.pEventAPI->EV_IndexFromTrace(pTrace), 0, pTrace->endpos, 0);
-		}
+		if (pTrace->allsolid || pTrace->fraction == 1.0)
+			return;
+
+		gBSPRenderer.CreateDecal(pTrace->endpos, pTrace->plane.normal, decalName, FALSE);
 	}
+	// RENDERERS END
 }
 
-void EV_HLDM_DecalGunshot(pmtrace_t* pTrace, int iBulletType)
+void EV_HLDM_DecalGunshot(pmtrace_t* pTrace, int iBulletType, float* vecSrc, float* vecEnd)
 {
 	physent_t* pe;
 
@@ -308,7 +527,7 @@ void EV_HLDM_DecalGunshot(pmtrace_t* pTrace, int iBulletType)
 		case BULLET_PLAYER_EAGLE:
 		default:
 			// smoke and decal
-			EV_HLDM_GunshotDecalTrace(pTrace, EV_HLDM_DamageDecal(pe));
+			EV_HLDM_GunshotDecalTrace(pTrace, EV_HLDM_HDDecal(pTrace, pe, vecSrc, vecEnd));
 			break;
 		}
 	}
@@ -319,7 +538,7 @@ void EV_HLDM_CheckTracer(int idx, float* vecSrc, float* end, float* forward, flo
 	int i;
 	bool player = idx >= 1 && idx <= gEngfuncs.GetMaxClients();
 
-	if (iTracerFreq != 0 && ((*tracerCount)++ % iTracerFreq) == 0)
+//	if (iTracerFreq != 0 && ((*tracerCount)++ % iTracerFreq) == 0)
 	{
 		Vector vecTracerSrc;
 
@@ -421,39 +640,53 @@ void EV_HLDM_FireBullets(int idx, float* forward, float* right, float* up, int c
 			case BULLET_PLAYER_9MM:
 
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 
 				break;
 			case BULLET_PLAYER_MP5:
 
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 				break;
 			case BULLET_PLAYER_BUCKSHOT:
 
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 
 				break;
 			case BULLET_PLAYER_357:
 
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 
 				break;
 
 			case BULLET_PLAYER_EAGLE:
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 				break;
 
 			case BULLET_PLAYER_762:
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 				break;
 
 			case BULLET_PLAYER_556:
 				EV_HLDM_PlayTextureSound(idx, &tr, vecSrc, vecEnd, iBulletType);
-				EV_HLDM_DecalGunshot(&tr, iBulletType);
+				// RENDERERS START
+				EV_HLDM_DecalGunshot(&tr, iBulletType, vecSrc, vecEnd);
+				// RENDERERS END
 				break;
 			}
 		}
@@ -492,9 +725,16 @@ void EV_FireGlock1(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(empty ? GLOCK_SHOOT_EMPTY : GLOCK_SHOOT, 0);
+		if (args->bparam2 != 0)
+			EV_WeaponAnimation(empty ? GLOCK_AIM_SHOOT_EMPTY : GLOCK_AIM_SHOOT, 0);
+		else
+			EV_WeaponAnimation(empty ? GLOCK_SHOOT_EMPTY : GLOCK_SHOOT, 0);
 
-		V_PunchAxis(0, -2.0);
+
+		V_PunchAxis(0, -1.5);
+		V_PunchAxis(1, gEngfuncs.pfnRandomFloat(-0.85,0.85));
+
+		gHUD.ScreenShake(1.5f, 0.2f, 5.5f);
 	}
 
 	EV_GetDefaultShellInfo(args, origin, velocity, ShellVelocity, ShellOrigin, forward, right, up, 20, -12, 4);
@@ -538,9 +778,14 @@ void EV_FireGlock2(event_args_t* args)
 	{
 		// Add muzzle flash to current weapon model
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(empty ? GLOCK_SHOOT_EMPTY : GLOCK_SHOOT, 0);
+		if (args->bparam2 != 0)
+			EV_WeaponAnimation(empty ? GLOCK_AIM_SHOOT_EMPTY : GLOCK_AIM_SHOOT, 0);
+		else
+			EV_WeaponAnimation(empty ? GLOCK_SHOOT_EMPTY : GLOCK_SHOOT, 0);
 
-		V_PunchAxis(0, -2.0);
+
+		V_PunchAxis(0, -0.3);
+		V_PunchAxis(1, -0.3);
 	}
 
 	EV_GetDefaultShellInfo(args, origin, velocity, ShellVelocity, ShellOrigin, forward, right, up, 20, -12, 4);
@@ -589,7 +834,7 @@ void EV_FireShotGunDouble(event_args_t* args)
 	{
 		// Add muzzle flash to current weapon model
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(SHOTGUN_FIRE2, 0);
+		EV_WeaponAnimation(SHOTGUN_FIRE2, 0);
 		V_PunchAxis(0, -10.0);
 	}
 
@@ -641,7 +886,7 @@ void EV_FireShotGunSingle(event_args_t* args)
 	{
 		// Add muzzle flash to current weapon model
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(SHOTGUN_FIRE, 0);
+		EV_WeaponAnimation(SHOTGUN_FIRE, 0);
 
 		V_PunchAxis(0, -5.0);
 	}
@@ -693,13 +938,22 @@ void EV_FireMP5(event_args_t* args)
 
 	shell = gEngfuncs.pEventAPI->EV_FindModelIndex("models/shell.mdl"); // brass shell
 
+	auto empty = args->bparam2 != 0;
+
 	if (EV_IsLocal(idx))
 	{
+		Vector viewangles;
+
 		// Add muzzle flash to current weapon model
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(MP5_FIRE1 + gEngfuncs.pfnRandomLong(0, 2), 0);
+		if (args->bparam2 != 0)
+			EV_WeaponAnimation(empty ? GLOCK_AIM_SHOOT_EMPTY : GLOCK_AIM_SHOOT, 0);
+		else
+			EV_WeaponAnimation(empty ? GLOCK_SHOOT_EMPTY : GLOCK_SHOOT, 0);
 
-		V_PunchAxis(0, gEngfuncs.pfnRandomFloat(-2, 2));
+		V_PunchAxis(0, gEngfuncs.pfnRandomFloat(-0.5, -0.1f));
+
+		gHUD.ScreenShake(gEngfuncs.pfnRandomFloat(0.5, 1.5f), 0.2f, 5.5f);
 	}
 
 	EV_GetDefaultShellInfo(args, origin, velocity, ShellVelocity, ShellOrigin, forward, right, up, 20, -12, 4);
@@ -734,7 +988,7 @@ void EV_FireMP52(event_args_t* args)
 
 	if (EV_IsLocal(idx))
 	{
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(MP5_LAUNCH, 0);
+		EV_WeaponAnimation(MP5_LAUNCH, 0);
 		V_PunchAxis(0, -10);
 	}
 
@@ -782,7 +1036,7 @@ void EV_FirePython(event_args_t* args)
 
 		// Add muzzle flash to current weapon model
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(PYTHON_FIRE1, body);
+		EV_WeaponAnimation(PYTHON_FIRE1, body);
 
 		V_PunchAxis(0, -10.0);
 
@@ -895,7 +1149,7 @@ void EV_FireGauss(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		V_PunchAxis(0, -2.0);
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(GAUSS_FIRE2, 0);
+		EV_WeaponAnimation(GAUSS_FIRE2, 0);
 
 		if (!m_fPrimaryFire)
 			g_flApplyVel = flDamage;
@@ -1010,7 +1264,7 @@ void EV_FireGauss(event_args_t* args)
 			else
 			{
 				// tunnel
-				EV_HLDM_DecalGunshot(&tr, BULLET_MONSTER_12MM);
+				EV_HLDM_DecalGunshot(&tr, BULLET_MONSTER_12MM, vecSrc, vecDest);
 
 				gEngfuncs.pEfxAPI->R_TempSprite(tr.endpos, vec3_origin, 1.0, m_iGlow, kRenderGlow, kRenderFxNoDissipation, flDamage / 255.0, 6.0, FTENT_FADEOUT);
 
@@ -1067,7 +1321,7 @@ void EV_FireGauss(event_args_t* args)
 							//////////////////////////////////// WHAT TO DO HERE
 							// CSoundEnt::InsertSound ( bits_SOUND_COMBAT, pev->origin, NORMAL_EXPLOSION_VOLUME, 3.0 );
 
-							EV_HLDM_DecalGunshot(&beam_tr, BULLET_MONSTER_12MM);
+							EV_HLDM_DecalGunshot(&beam_tr, BULLET_MONSTER_12MM, vecSrc, vecDest);
 
 							gEngfuncs.pEfxAPI->R_TempSprite(beam_tr.endpos, vec3_origin, 0.1, m_iGlow, kRenderGlow, kRenderFxNoDissipation, flDamage / 255.0, 6.0, FTENT_FADEOUT);
 
@@ -1142,13 +1396,13 @@ void EV_Crowbar(event_args_t* args)
 		switch ((g_iSwing++) % 3)
 		{
 		case 0:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK1MISS, 0);
+			EV_WeaponAnimation(CROWBAR_ATTACK1MISS, 0);
 			break;
 		case 1:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK2MISS, 0);
+			EV_WeaponAnimation(CROWBAR_ATTACK2MISS, 0);
 			break;
 		case 2:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK3MISS, 0);
+			EV_WeaponAnimation(CROWBAR_ATTACK3MISS, 0);
 			break;
 		}
 	}
@@ -1200,9 +1454,9 @@ void EV_FireCrossbow2(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		if (0 != args->iparam1)
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROSSBOW_FIRE1, 0);
+			EV_WeaponAnimation(CROSSBOW_FIRE1, 0);
 		else
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROSSBOW_FIRE3, 0);
+			EV_WeaponAnimation(CROSSBOW_FIRE3, 0);
 	}
 
 	// Store off the old count
@@ -1276,9 +1530,9 @@ void EV_FireCrossbow(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		if (0 != args->iparam1)
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROSSBOW_FIRE1, 0);
+			EV_WeaponAnimation(CROSSBOW_FIRE1, 0);
 		else
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROSSBOW_FIRE3, 0);
+			EV_WeaponAnimation(CROSSBOW_FIRE3, 0);
 
 		V_PunchAxis(0, -2.0);
 	}
@@ -1304,7 +1558,7 @@ void EV_FireRpg(event_args_t* args)
 	//Only play the weapon anims if I shot it.
 	if (EV_IsLocal(idx))
 	{
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(RPG_FIRE2, 0);
+		EV_WeaponAnimation(RPG_FIRE2, 0);
 
 		V_PunchAxis(0, -5.0);
 	}
@@ -1367,7 +1621,7 @@ void EV_EgonFire(event_args_t* args)
 
 	//Only play the weapon anims if I shot it.
 	if (EV_IsLocal(idx))
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(g_fireAnims1[gEngfuncs.pfnRandomLong(0, 3)], 0);
+		EV_WeaponAnimation(g_fireAnims1[gEngfuncs.pfnRandomLong(0, 3)], 0, true);
 
 	if (iStartup && EV_IsLocal(idx) && !pBeam && !pBeam2 && !pFlare && 0 != cl_lw->value) //Adrian: Added the cl_lw check for those lital people that hate weapon prediction.
 	{
@@ -1487,7 +1741,7 @@ void EV_EgonStop(event_args_t* args)
 		// HACK: only reset animation if the Egon is still equipped.
 		if (g_CurrentWeaponId == WEAPON_EGON)
 		{
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(EGON_IDLE1, 0);
+			EV_WeaponAnimation(EGON_IDLE1, 0);
 		}
 	}
 }
@@ -1511,7 +1765,7 @@ void EV_HornetGunFire(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		V_PunchAxis(0, gEngfuncs.pfnRandomLong(0, 2));
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(HGUN_SHOOT, 0);
+		EV_WeaponAnimation(HGUN_SHOOT, 0);
 	}
 
 	switch (gEngfuncs.pfnRandomLong(0, 2))
@@ -1566,7 +1820,7 @@ void EV_TripmineFire(event_args_t* args)
 
 	//Hit something solid
 	if (tr.fraction < 1.0)
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(TRIPMINE_DRAW, 0);
+		EV_WeaponAnimation(TRIPMINE_DRAW, 0);
 
 	gEngfuncs.pEventAPI->EV_PopPMStates();
 }
@@ -1605,7 +1859,7 @@ void EV_SnarkFire(event_args_t* args)
 
 	//Find space to drop the thing.
 	if (tr.allsolid == 0 && tr.startsolid == 0 && tr.fraction > 0.25)
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(SQUEAK_THROW, 0);
+		EV_WeaponAnimation(SQUEAK_THROW, 0);
 
 	gEngfuncs.pEventAPI->EV_PopPMStates();
 }
@@ -1627,7 +1881,7 @@ void EV_FireEagle(event_args_t* args)
 	{
 		EV_MuzzleFlash();
 
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(bEmpty ? EAGLE_SHOOT_EMPTY : EAGLE_SHOOT, 0);
+		EV_WeaponAnimation(bEmpty ? EAGLE_SHOOT_EMPTY : EAGLE_SHOOT, 0);
 		V_PunchAxis(0, -4.0);
 	}
 
@@ -1690,11 +1944,11 @@ void EV_Pipewrench(event_args_t* args)
 	{
 		if (hitSomething)
 		{
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_BIG_SWING_HIT, 0);
+			EV_WeaponAnimation(PIPEWRENCH_BIG_SWING_HIT, 0);
 		}
 		else
 		{
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_BIG_SWING_MISS, 0);
+			EV_WeaponAnimation(PIPEWRENCH_BIG_SWING_MISS, 0);
 		}
 
 		gEngfuncs.pEventAPI->EV_PlaySound(idx, origin, CHAN_WEAPON, "weapons/pwrench_big_miss.wav", 1, ATTN_NORM, 0, PITCH_NORM);
@@ -1706,13 +1960,13 @@ void EV_Pipewrench(event_args_t* args)
 			switch (g_iClub % 3)
 			{
 			case 0:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK1HIT, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK1HIT, 0);
 				break;
 			case 1:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK2HIT, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK2HIT, 0);
 				break;
 			case 2:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK3HIT, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK3HIT, 0);
 				break;
 			}
 		}
@@ -1721,13 +1975,13 @@ void EV_Pipewrench(event_args_t* args)
 			switch (g_iClub % 3)
 			{
 			case 0:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK1MISS, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK1MISS, 0);
 				break;
 			case 1:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK2MISS, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK2MISS, 0);
 				break;
 			case 2:
-				gEngfuncs.pEventAPI->EV_WeaponAnimation(PIPEWRENCH_ATTACK3MISS, 0);
+				EV_WeaponAnimation(PIPEWRENCH_ATTACK3MISS, 0);
 				break;
 			}
 
@@ -1766,7 +2020,7 @@ void EV_FireM249(event_args_t* args)
 	{
 		SetLocalBody(WEAPON_M249, iBody);
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(gEngfuncs.pfnRandomLong(0, 2) + M249_SHOOT1, iBody);
+		EV_WeaponAnimation(gEngfuncs.pfnRandomLong(0, 2) + M249_SHOOT1, iBody);
 		V_PunchAxis(0, gEngfuncs.pfnRandomFloat(-2, 2));
 		V_PunchAxis(1, gEngfuncs.pfnRandomFloat(-1, 1));
 	}
@@ -1862,7 +2116,7 @@ void EV_FireDisplacer(event_args_t* args)
 
 		if (EV_IsLocal(args->entindex))
 		{
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(DISPLACER_FIRE, 0);
+			EV_WeaponAnimation(DISPLACER_FIRE, 0);
 			V_PunchAxis(0, -2);
 		}
 
@@ -1879,7 +2133,7 @@ void EV_FireShockRifle(event_args_t* args)
 	gEngfuncs.pEventAPI->EV_PlaySound(args->entindex, args->origin, CHAN_WEAPON, "weapons/shock_fire.wav", 0.9, ATTN_NORM, 0, PITCH_NORM);
 
 	if (EV_IsLocal(args->entindex))
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(SHOCKRIFLE_FIRE, 0);
+		EV_WeaponAnimation(SHOCKRIFLE_FIRE, 0);
 
 	for (size_t uiIndex = 0; uiIndex < 3; ++uiIndex)
 	{
@@ -1902,7 +2156,7 @@ void EV_FireSpore(event_args_t* args)
 
 	if (EV_IsLocal(args->entindex))
 	{
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(SPLAUNCHER_FIRE, 0);
+		EV_WeaponAnimation(SPLAUNCHER_FIRE, 0);
 
 		V_PunchAxis(0, -3.0);
 
@@ -1937,7 +2191,7 @@ void EV_SniperRifle(event_args_t* args)
 	if (EV_IsLocal(idx))
 	{
 		EV_MuzzleFlash();
-		gEngfuncs.pEventAPI->EV_WeaponAnimation(iClip <= 0 ? SNIPERRIFLE_FIRELASTROUND : SNIPERRIFLE_FIRE, 0);
+		EV_WeaponAnimation(iClip <= 0 ? SNIPERRIFLE_FIRELASTROUND : SNIPERRIFLE_FIRE, 0);
 		V_PunchAxis(0, -2.0);
 	}
 
@@ -1997,13 +2251,13 @@ void EV_Knife(event_args_t* args)
 		switch ((g_iSwing++) % 3)
 		{
 		case 0:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(KNIFE_ATTACK1MISS, 0);
+			EV_WeaponAnimation(KNIFE_ATTACK1MISS, 0);
 			break;
 		case 1:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(KNIFE_ATTACK2, 0);
+			EV_WeaponAnimation(KNIFE_ATTACK2, 0);
 			break;
 		case 2:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(KNIFE_ATTACK3, 0);
+			EV_WeaponAnimation(KNIFE_ATTACK3, 0);
 			break;
 		}
 	}
@@ -2032,7 +2286,7 @@ void EV_PenguinFire(event_args_t* args)
 		gEngfuncs.pEventAPI->EV_PlayerTrace(start, end, PM_NORMAL, -1, &tr);
 
 		if (0 == tr.allsolid && 0 == tr.startsolid && tr.fraction > 0.25)
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(PENGUIN_THROW, 0);
+			EV_WeaponAnimation(PENGUIN_THROW, 0);
 
 		gEngfuncs.pEventAPI->EV_PopPMStates();
 	}

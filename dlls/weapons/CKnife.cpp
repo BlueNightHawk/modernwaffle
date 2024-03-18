@@ -254,8 +254,9 @@ bool CKnife::Swing(const bool bFirst)
 
 		m_pPlayer->m_iWeaponVolume = flVol * KNIFE_WALLHIT_VOLUME;
 
-		SetThink(&CKnife::Smack);
-		pev->nextthink = gpGlobals->time + 0.2;
+		// RENDERERS START
+		DecalGunshot(&m_trHit, BULLET_PLAYER_CROWBAR, vecSrc, vecEnd);
+		// RENDERERS END
 #endif
 	}
 	return bDidHit;
@@ -268,7 +269,6 @@ void CKnife::SwingAgain()
 
 void CKnife::Smack()
 {
-	DecalGunshot(&m_trHit, BULLET_PLAYER_CROWBAR);
 }
 
 int CKnife::iItemSlot()

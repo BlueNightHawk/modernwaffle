@@ -28,6 +28,10 @@ extern float v_idlescale;
 float in_fov;
 extern void HUD_SetCmdBits(int bits);
 
+extern Vector ev_punchangle;
+
+extern void CatchScreenToScope();
+
 bool CHud::UpdateClientData(client_data_t* cdata, float time)
 {
 	memcpy(m_vecOrigin, cdata->origin, sizeof(Vector));
@@ -41,7 +45,7 @@ bool CHud::UpdateClientData(client_data_t* cdata, float time)
 
 	Think();
 
-	cdata->fov = m_iFOV;
+	cdata->fov = std::lerp(cdata->fov, m_iFOV + (ev_punchangle.Length() * 1.2423f), m_flTimeDelta * 10.0f);
 
 	v_idlescale = m_iConcussionEffect;
 

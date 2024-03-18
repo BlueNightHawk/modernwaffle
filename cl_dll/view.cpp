@@ -20,6 +20,17 @@
 #include "hltv.h"
 #include "Exports.h"
 
+#include "event_api.h"
+
+#include <algorithm>
+
+// RENDERERS START
+#include "bsprenderer.h"
+#include "propmanager.h"
+#include "mirrormanager.h"
+#include "watershader.h"
+// RENDERERS END
+
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
 
@@ -158,28 +169,31 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 	V_NormalizeAngles( output );
 } */
 
-// Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
-float V_CalcBob(struct ref_params_s* pparams)
+enum class CalcBobMode
 {
-	static double bobtime = 0;
-	static float bob = 0;
-	float cycle;
-	static float lasttime = 0;
-	Vector vel;
+	VB_COS,
+	VB_SIN,
+	VB_COS2,
+	VB_SIN2
+};
 
+// Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
+void V_CalcBob(struct ref_params_s* pparams, float frequencyMultiplier, const CalcBobMode& mode, double& bobtime, float& bob, float& lasttime)
+{
+	float cycle;
+	Vector vel;
 
 	if (pparams->onground == -1 ||
 		pparams->time == lasttime)
 	{
 		// just use old value
-		return bob;
+		return;
 	}
 
 	lasttime = pparams->time;
 
-	//TODO: bobtime will eventually become a value so large that it will no longer behave properly.
-	//Consider resetting the variable if a level change is detected (pparams->time < lasttime might do the trick).
-	bobtime += pparams->frametime;
+	bobtime += pparams->frametime * frequencyMultiplier;
+
 	cycle = bobtime - (int)(bobtime / cl_bobcycle->value) * cl_bobcycle->value;
 	cycle /= cl_bobcycle->value;
 
@@ -198,10 +212,18 @@ float V_CalcBob(struct ref_params_s* pparams)
 	vel[2] = 0;
 
 	bob = sqrt(vel[0] * vel[0] + vel[1] * vel[1]) * cl_bob->value;
-	bob = bob * 0.3 + bob * 0.7 * sin(cycle);
+
+	if (mode == CalcBobMode::VB_SIN)
+		bob = bob * 0.3 + bob * 0.7 * sin(cycle);
+	else if (mode == CalcBobMode::VB_COS)
+		bob = bob * 0.3 + bob * 0.7 * cos(cycle);
+	else if (mode == CalcBobMode::VB_SIN2)
+		bob = bob * 0.3 + bob * 0.7 * sin(cycle) * sin(cycle);
+	else if (mode == CalcBobMode::VB_COS2)
+		bob = bob * 0.3 + bob * 0.7 * cos(cycle) * cos(cycle);
+
 	bob = V_min(bob, 4);
 	bob = V_max(bob, -7);
-	return bob;
 }
 
 /*
@@ -368,11 +390,11 @@ void V_CalcGunAngle(struct ref_params_s* pparams)
 
 	viewent->angles[YAW] = pparams->viewangles[YAW] + pparams->crosshairangle[YAW];
 	viewent->angles[PITCH] = -pparams->viewangles[PITCH] + pparams->crosshairangle[PITCH] * 0.25;
-	viewent->angles[ROLL] -= v_idlescale * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
+	viewent->angles[ROLL] -= (v_idlescale + 0.5f) * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
 
 	// don't apply all of the v_ipitch to prevent normally unseen parts of viewmodel from coming into view.
-	viewent->angles[PITCH] -= v_idlescale * sin(pparams->time * v_ipitch_cycle.value) * (v_ipitch_level.value * 0.5);
-	viewent->angles[YAW] -= v_idlescale * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
+	viewent->angles[PITCH] -= (v_idlescale + 0.5f) * sin(pparams->time * v_ipitch_cycle.value) * (v_ipitch_level.value * 0.5);
+	viewent->angles[YAW] -= (v_idlescale + 0.5f) * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
 
 	VectorCopy(viewent->angles, viewent->curstate.angles);
 	VectorCopy(viewent->angles, viewent->latched.prevangles);
@@ -387,9 +409,9 @@ Idle swaying
 */
 void V_AddIdle(struct ref_params_s* pparams)
 {
-	pparams->viewangles[ROLL] += v_idlescale * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
-	pparams->viewangles[PITCH] += v_idlescale * sin(pparams->time * v_ipitch_cycle.value) * v_ipitch_level.value;
-	pparams->viewangles[YAW] += v_idlescale * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
+	pparams->viewangles[ROLL] += (v_idlescale + 0.25f) * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
+	pparams->viewangles[PITCH] += (v_idlescale + 0.25f) * sin(pparams->time * v_ipitch_cycle.value) * v_ipitch_level.value;
+	pparams->viewangles[YAW] += (v_idlescale + 0.25f) * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
 }
 
 
@@ -465,6 +487,227 @@ void V_CalcIntermissionRefdef(struct ref_params_s* pparams)
 	v_angles = pparams->viewangles;
 }
 
+extern float g_flSetAnimDelay;
+
+void V_HandleWalking(struct ref_params_s* pparams)
+{
+	static float flVal = 0.0f;
+	static float flSprintVal = 0.0f;
+
+	auto p = gEngfuncs.GetViewModel();
+
+	if (Vector(pparams->simvel).Length2D() < 20.0f || pparams->simvel[2] > 10.0f || gHUD.m_iFOV != gHUD.DefaultFov() || g_flSetAnimDelay > pparams->time)
+	{
+		flSprintVal = std::lerp(flSprintVal, 0.0f, pparams->frametime * 5.0f);
+		flVal = std::lerp(flVal, 0.0f, pparams->frametime * 5.0f);
+	}
+	else if ((pparams->cmd->buttons & IN_FORWARD) != 0 ||
+		(pparams->cmd->buttons & IN_MOVERIGHT) != 0 ||
+		(pparams->cmd->buttons & IN_MOVELEFT) != 0 ||
+		(pparams->cmd->buttons & IN_BACK) != 0)
+	{
+		if ((pparams->cmd->buttons & IN_ALT1) != 0)
+		{
+			flSprintVal = std::lerp(flSprintVal, 3.0f, pparams->frametime * 5.0f);
+		}
+		else
+		{
+			flSprintVal = std::lerp(flSprintVal, 0.0f, pparams->frametime * 5.0f);
+		}
+		
+		flVal = std::lerp(flVal, 2.0f, pparams->frametime * 5.0f);
+	}
+	else
+	{
+		flSprintVal = std::lerp(flSprintVal, 0.0f, pparams->frametime * 5.0f);
+		flVal = std::lerp(flVal, 0.0f, pparams->frametime * 5.0f);
+	}
+
+	p->angles[0] -= flSprintVal * 1.4f;
+	p->angles[1] += flSprintVal * 1.8f;
+	p->angles[0] -= flVal * 1.4f;
+	p->angles[2] -= flVal * 1.6f;
+	p->origin -= Vector(pparams->forward) * (flVal * 2.0f);
+	p->origin += Vector(pparams->up) * (flVal * 0.8f);
+}
+
+void V_HandleWalls(struct ref_params_s* pparams)
+{
+	static float flVal = 0.0f;
+	int idx = pparams->viewentity;
+
+	pmtrace_t tr;
+
+	Vector vecSrc = pparams->vieworg;
+	Vector vecDir = pparams->forward;
+	Vector vecEnd = vecSrc + (vecDir * 30);
+
+	auto p = gEngfuncs.GetViewModel();
+
+	if (gHUD.m_iFOV == gHUD.DefaultFov() || g_flSetAnimDelay > pparams->time)
+	{
+		gEngfuncs.pEventAPI->EV_SetUpPlayerPrediction(0, 1);
+
+		// Store off the old count
+		gEngfuncs.pEventAPI->EV_PushPMStates();
+
+		// Now add in all of the players.
+		gEngfuncs.pEventAPI->EV_SetSolidPlayers(idx - 1);
+
+		gEngfuncs.pEventAPI->EV_SetTraceHull(2);
+		gEngfuncs.pEventAPI->EV_PlayerTrace(vecSrc, vecEnd, PM_NORMAL, -1, &tr);
+
+		flVal = std::lerp(flVal, (1.0f - tr.fraction) * 1.5f, pparams->frametime * 12.0f);
+
+		gEngfuncs.pEventAPI->EV_PopPMStates();
+	}
+	else
+	{
+		flVal = std::lerp(flVal, 0.0f, pparams->frametime * 12.0f);
+	}
+
+	p->angles[0] += flVal * 13.0f;
+	p->origin -= Vector(pparams->up) * flVal * 4.0f;
+	p->origin -= Vector(pparams->forward) * flVal * 8.0f;
+}
+
+void V_CalcSway(struct ref_params_s* pparams)
+{
+	static Vector lagangle;
+	static Vector vLastAngles;
+	static Vector vLastDelta;
+	Vector angleDelta = pparams->cl_viewangles;
+
+	angleDelta -= vLastAngles;
+	if (fabs(angleDelta.y) > 50)
+	{
+		angleDelta = vLastDelta;
+	}
+	angleDelta = angleDelta * 30.0f;
+
+	vLastAngles = pparams->cl_viewangles;
+
+	auto view = gEngfuncs.GetViewModel();
+	// magic nipples - view lag
+	float mouseX = angleDelta[1] * 0.045;
+	float mouseY = angleDelta[0] * 0.045;
+	float mouseZ = angleDelta[1] * 0.02;
+	float frameadj = (1.0f / pparams->frametime) * 0.01;
+
+	lagangle.x = std::lerp(lagangle.x, mouseX * frameadj, pparams->frametime * 4);
+	lagangle.x = std::clamp(lagangle.x, -15.0f, 15.0f);
+
+	lagangle.z = std::lerp(lagangle.z, mouseZ * frameadj, pparams->frametime * 4);
+	lagangle.z = std::clamp(lagangle.z, -8.0f, 8.0f);
+
+	lagangle.y = std::lerp(lagangle.y, mouseY * frameadj, pparams->frametime * 4);
+	lagangle.y = std::clamp(lagangle.y, -15.0f, 15.0f);
+
+	view->angles[0] += lagangle.y;
+	view->angles[1] -= lagangle.x;
+	view->angles[2] += lagangle.z;
+
+	// this moves the weapon origin left/right, up/down based on input (very similar to the hl2 weapon lag)
+	for (int i = 0; i < 3; i++)
+	{
+		view->origin[i] -= 0.2 * lagangle.x * pparams->right[i];
+		view->origin[i] -= 0.2 * lagangle.y * pparams->up[i];
+	}
+	// END
+}
+
+/*
+==============
+V_LocalScreenShake
+
+Set screen shake
+==============
+*/
+void V_LocalScreenShake(screen_shake_t *shake, float amplitude, float duration, float frequency)
+{
+	// don't overwrite larger existing shake
+	if (amplitude > shake->amplitude)
+		shake->amplitude = amplitude;
+
+	shake->duration = duration;
+	shake->time = gHUD.m_flTime + shake->duration;
+	shake->frequency = frequency;
+	shake->next_shake = 0.0f; // apply immediately
+}
+
+/*
+=============
+V_CalcShake
+
+=============
+*/
+void V_CalcShake(screen_shake_t* shake)
+{
+	float frametime, fraction, freq;
+	int i;
+	float flTime = gHUD.m_flTime;
+
+	if (flTime > shake->time || shake->amplitude <= 0 || shake->frequency <= 0 || shake->duration <= 0)
+	{
+		// reset shake
+		if (shake->time != 0)
+		{
+			shake->time = 0;
+			shake->applied_angle = 0;
+			VectorClear(shake->applied_offset);
+		}
+
+		return;
+	}
+
+	frametime = gHUD.m_flTimeDelta;
+
+	if (flTime > shake->next_shake)
+	{
+		// get next shake time based on frequency over duration
+		shake->next_shake = (float)flTime + shake->frequency / shake->duration;
+
+		// randomize each shake
+		for (i = 0; i < 3; i++)
+			shake->offset[i] = gEngfuncs.pfnRandomFloat(-shake->amplitude, shake->amplitude);
+		shake->angle = gEngfuncs.pfnRandomFloat(-shake->amplitude * 0.25f, shake->amplitude * 0.25f);
+	}
+
+	// get initial fraction and frequency values over the duration
+	fraction = ((float)flTime - shake->time) / shake->duration;
+	freq = fraction != 0.0f ? (shake->frequency / fraction) * shake->frequency : 0.0f;
+
+	// quickly approach zero but apply time over sine wave
+	fraction *= fraction * sin(flTime * freq);
+
+	// apply shake offset
+	for (i = 0; i < 3; i++)
+		shake->applied_offset[i] = shake->offset[i] * fraction;
+
+	// apply roll angle
+	shake->applied_angle = shake->angle * fraction;
+
+	// decrease amplitude, but slower on longer shakes or higher frequency
+	shake->amplitude -= shake->amplitude * (frametime / (shake->frequency * shake->duration));
+}
+
+
+/*
+=============
+V_ApplyShake
+
+=============
+*/
+void V_ApplyShake(screen_shake_t* const shake, float* origin, float* angles, float factor)
+{
+	if (origin)
+		VectorMA(origin, factor, shake->applied_offset, origin);
+
+	if (angles)
+		angles[ROLL] += shake->applied_angle * factor;
+}
+
+
 #define ORIGIN_BACKUP 64
 #define ORIGIN_MASK (ORIGIN_BACKUP - 1)
 
@@ -491,14 +734,25 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	cl_entity_t *ent, *view;
 	int i;
 	Vector angles;
-	float bob, waterOffset;
+	float waterOffset;
 	static viewinterp_t ViewInterp;
 
 	static float oldz = 0;
 	static float lasttime;
 
+	static double bobTimes[3]{0.0f};
+	static float lastTimes[3]{0.0f};
+
+	static float flBobScale = 1.0f;
+
+	float bobForward;
+	float bobRight;
+	float bobUp;
+
 	Vector camAngles, camForward, camRight, camUp;
 	cl_entity_t* pwater;
+
+	auto pShake = gHUD.GetScreenShake();
 
 	V_DriftPitch(pparams);
 
@@ -517,17 +771,21 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	// transform the view offset by the model's matrix to get the offset from
 	// model origin for the view
-	bob = V_CalcBob(pparams);
+	V_CalcBob(pparams, 0.75f, CalcBobMode::VB_SIN, bobTimes[0], bobRight, lastTimes[0]);
+	V_CalcBob(pparams, 1.50f, CalcBobMode::VB_SIN, bobTimes[1], bobUp, lastTimes[1]);
+	V_CalcBob(pparams, 1.00f, CalcBobMode::VB_SIN, bobTimes[2], bobForward, lastTimes[2]);
 
 	// refresh position
 	VectorCopy(pparams->simorg, pparams->vieworg);
-	pparams->vieworg[2] += (bob);
 	VectorAdd(pparams->vieworg, pparams->viewheight, pparams->vieworg);
 
 	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
 
 	gEngfuncs.V_CalcShake();
 	gEngfuncs.V_ApplyShake(pparams->vieworg, pparams->viewangles, 1.0);
+
+	V_CalcShake(pShake);
+	V_ApplyShake(pShake, pparams->vieworg, pparams->viewangles, 1.0);
 
 	// never let view origin sit exactly on a node line, because a water plane can
 	// dissapear when viewed with the eye exactly on it.
@@ -649,27 +907,41 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	// Let the viewmodel shake at about 10% of the amplitude
 	gEngfuncs.V_ApplyShake(view->origin, view->angles, 0.9);
+	V_ApplyShake(pShake, view->origin, view->angles, 0.9);
+
+	if ((Vector(pparams->simvel).Length2D() - 50.0f) > pparams->movevars->maxspeed)
+	{
+		flBobScale = std::lerp(flBobScale, 0.5f, pparams->frametime * 15.0f);
+	}
+	else
+	{
+		flBobScale = std::lerp(flBobScale, 0.2f, pparams->frametime * 15.0f);
+	}
+
 
 	for (i = 0; i < 3; i++)
 	{
-		view->origin[i] += bob * 0.4 * pparams->forward[i];
+		view->origin[i] += (bobRight * 0.06) * pparams->right[i];
+		view->origin[i] += (bobUp * 0.047) * pparams->up[i];
 	}
-	view->origin[2] += bob;
 
-	// throw in a little tilt.
-	view->angles[YAW] -= bob * 0.5;
-	view->angles[ROLL] -= bob * 1;
-	view->angles[PITCH] -= bob * 0.3;
+	pparams->viewangles[0] += (bobUp * 0.42f) * flBobScale;
+	pparams->viewangles[1] += (bobRight * 0.652f) * flBobScale;
 
-	if (0 != cl_bobtilt->value)
-	{
-		VectorCopy(view->angles, view->curstate.angles);
-	}
+	VectorAdd(pparams->viewangles, (gHUD.m_vCamAngles * 0.025f), pparams->viewangles);
+
+	V_HandleWalking(pparams);
+	V_HandleWalls(pparams);
+	V_CalcSway(pparams);
+
+	VectorCopy(view->angles, view->curstate.angles);
 
 	// pushing the view origin down off of the same X/Z plane as the ent's origin will give the
 	// gun a very nice 'shifting' effect when the player looks up/down. If there is a problem
 	// with view model distortion, this may be a cause. (SJB).
-	view->origin[2] -= 1;
+	//view->origin[2] -= 1;
+
+	view->origin -= Vector(pparams->up) * 1;
 
 	// fudge position around to keep amount of weapon visible
 	// roughly equal with different FOV
@@ -1639,6 +1911,11 @@ void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 		V_CalcNormalRefdef(pparams);
 	}
 
+// RENDERER START
+	// 2012-02-25
+	R_CalcRefDef(pparams);
+	// RENDERER END
+
 	/*
 // Example of how to overlay the whole screen with red at 50 % alpha
 #define SF_TEST
@@ -1703,7 +1980,7 @@ void V_Init()
 	v_centermove = gEngfuncs.pfnRegisterVariable("v_centermove", "0.15", 0);
 	v_centerspeed = gEngfuncs.pfnRegisterVariable("v_centerspeed", "500", 0);
 
-	cl_bobcycle = gEngfuncs.pfnRegisterVariable("cl_bobcycle", "0.8", 0); // best default for my experimental gun wag (sjb)
+	cl_bobcycle = gEngfuncs.pfnRegisterVariable("cl_bobcycle", "0.5", 0); // best default for my experimental gun wag (sjb)
 	cl_bob = gEngfuncs.pfnRegisterVariable("cl_bob", "0.01", 0);		  // best default for my experimental gun wag (sjb)
 	cl_bobup = gEngfuncs.pfnRegisterVariable("cl_bobup", "0.5", 0);
 	cl_waterdist = gEngfuncs.pfnRegisterVariable("cl_waterdist", "4", 0);

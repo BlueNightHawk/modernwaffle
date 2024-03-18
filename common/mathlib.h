@@ -106,7 +106,7 @@ void VectorAngles(const float* forward, float* angles);
 
 int InvertMatrix(const float* m, float* out);
 
-int BoxOnPlaneSide(const Vector& emins, const Vector& emaxs, struct mplane_s* plane);
+//int BoxOnPlaneSide(const Vector& emins, const Vector& emaxs, struct mplane_s* plane);
 float anglemod(float a);
 
 
@@ -118,3 +118,5 @@ float anglemod(float a);
 																   ((p)->dist >= (emaxs)[(p)->type]) ? 2   \
 																									 : 3)) \
 					 : BoxOnPlaneSide((emins), (emaxs), (p)))
+
+void MatrixAngles(const float in[3][4], Vector& out);

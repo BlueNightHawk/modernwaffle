@@ -29,6 +29,35 @@
 #include "common_types.h"
 #include "cl_dll.h"
 #include "ammo.h"
+#include "cvardef.h"
+
+typedef struct screen_shake_s
+{
+	float time;
+	float duration;
+	float amplitude;
+	float frequency;
+	float next_shake;
+	Vector offset;
+	float angle;
+	Vector applied_offset;
+	float applied_angle;
+} screen_shake_t;
+
+
+// RENDERERS START
+#include "frustum.h"
+
+struct fog_settings_t
+{
+	Vector color;
+	int start;
+	int end;
+
+	bool affectsky;
+	bool active;
+};
+// RENDERERS END
 
 #define DHN_DRAWZERO 1
 #define DHN_2DIGITS 2
@@ -128,6 +157,13 @@ public:
 	void UserCmd_Close();
 	void UserCmd_NextWeapon();
 	void UserCmd_PrevWeapon();
+
+	int GetCurrentWeapon()
+	{
+		if (m_pWeapon)
+			return m_pWeapon->iId;
+		return 0;
+	}
 
 private:
 	float m_fFade;
@@ -675,6 +711,8 @@ private:
 
 	struct cvar_s* default_fov;
 
+	screen_shake_t m_ScreenShake;
+
 public:
 	HSPRITE GetSprite(int index)
 	{
@@ -729,6 +767,8 @@ public:
 	bool MsgFunc_Concuss(const char* pszName, int iSize, void* pbuf);
 	bool MsgFunc_Weapons(const char* pszName, int iSize, void* pbuf);
 
+	bool MsgFunc_SendAnim(const char* pszName, int iSize, void* pbuf);
+	bool MsgFunc_DOF(const char* pszName, int iSize, void* pbuf);
 	// Screen information
 	SCREENINFO m_scrinfo;
 
@@ -744,7 +784,7 @@ public:
 
 	float GetSensitivity();
 
-	bool isNightVisionOn() { return mNightVisionState; }
+	bool isNightVisionOn() { return false; }
 
 	void setNightVisionState(bool state);
 
@@ -753,6 +793,46 @@ public:
 		r = 255;
 		g = 255;
 		b = 255;
+	}
+
+	Vector m_vCamAngles;
+
+	float flDOFBlurAlpha;
+	float flMaxDofBlurAlpha;
+
+	int DefaultFov()
+	{
+		return (int)default_fov->value;
+	}
+
+	int GetCurrentWeapon()
+	{
+		return m_Ammo.GetCurrentWeapon();
+	}
+
+// RENDERERS START
+	fog_settings_t m_pSkyFogSettings;
+	fog_settings_t m_pFogSettings;
+	FrustumCheck viewFrustum;
+
+	int _cdecl MsgFunc_SetFog(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_LightStyle(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_StudioDecal(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_FreeEnt(const char* pszName, int iSize, void* pbuf);
+
+	int _cdecl MsgFunc_CreateDecal(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_SkyMark_S(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_SkyMark_W(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_DynLight(const char* pszName, int iSize, void* pbuf);
+	int _cdecl MsgFunc_CreateSystem(const char* pszName, int iSize, void* pbuf);
+	// RENDERERS END
+
+	void ScreenShake(const Vector &center, float amplitude, float duration, float frequency, float radius);
+	void ScreenShake(float amplitude, float duration, float frequency);
+
+	screen_shake_t *GetScreenShake()
+	{
+		return &m_ScreenShake;
 	}
 };
 

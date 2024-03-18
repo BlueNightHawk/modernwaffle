@@ -40,6 +40,8 @@ void CMP5::Spawn()
 
 	m_flNextGrenadeLoad = gpGlobals->time;
 
+	m_bFirstDraw = true;
+
 	FallInit(); // get ready to fall down.
 }
 
@@ -78,8 +80,8 @@ bool CMP5::GetItemInfo(ItemInfo* p)
 	p->pszName = STRING(pev->classname);
 	p->pszAmmo1 = "9mm";
 	p->iMaxAmmo1 = _9MM_MAX_CARRY;
-	p->pszAmmo2 = "ARgrenades";
-	p->iMaxAmmo2 = M203_GRENADE_MAX_CARRY;
+	p->pszAmmo2 = nullptr;
+	p->iMaxAmmo2 = -1;
 	p->iMaxClip = MP5_MAX_CLIP;
 	p->iSlot = 2;
 	p->iPosition = 0;
@@ -106,7 +108,25 @@ void CMP5::IncrementAmmo(CBasePlayer* pPlayer)
 
 bool CMP5::Deploy()
 {
-	return DefaultDeploy("models/v_9mmAR.mdl", "models/p_9mmAR.mdl", MP5_DEPLOY, "mp5");
+	int iAnim = 0;
+
+	if (m_bFirstDraw)
+	{
+		m_pPlayer->SetDOF(1.0f, 1.0f);
+		iAnim = GLOCK_DRAW_FIRSTDRAW;
+		m_flAnimTime = gpGlobals->time + 1.43f;
+	}
+	else
+	{
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		m_flAnimTime = gpGlobals->time + 0.4f;
+		iAnim = (m_iClip == 0) ? GLOCK_DRAW_EMPTY : GLOCK_DRAW;
+	}
+	m_bSprintingAnim = m_bWalkingAnim = false;
+	m_bAiming = false;
+
+	// pev->body = 1;
+	return DefaultDeploy("models/v_9mmAR.mdl", "models/p_9mmAR.mdl", iAnim, "mp5");
 }
 
 
@@ -138,6 +158,10 @@ void CMP5::PrimaryAttack()
 	// player "shoot" animation
 	m_pPlayer->SetAnimation(PLAYER_ATTACK1);
 
+	m_pPlayer->pev->v_angle[0] -= RANDOM_FLOAT(0.25f, 0.75f);
+	m_pPlayer->pev->v_angle[1] += RANDOM_FLOAT(-0.25f, 0.25f);
+	m_pPlayer->pev->fixangle = 1;
+
 	Vector vecSrc = m_pPlayer->GetGunPosition();
 	Vector vecAiming = m_pPlayer->GetAutoaimVector(AUTOAIM_5DEGREES);
 	Vector vecDir;
@@ -164,7 +188,7 @@ void CMP5::PrimaryAttack()
 	flags = 0;
 #endif
 
-	PLAYBACK_EVENT_FULL(flags, m_pPlayer->edict(), m_usMP5, 0.0, g_vecZero, g_vecZero, vecDir.x, vecDir.y, 0, 0, 0, 0);
+	PLAYBACK_EVENT_FULL(flags, m_pPlayer->edict(), m_usMP5, 0.0, g_vecZero, g_vecZero, vecDir.x, vecDir.y, 0, 0, (m_iClip == 0) ? 1 : 0, m_bAiming ? 1 : 0);
 
 	if (0 == m_iClip && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] <= 0)
 		// HEV suit - indicate out of ammo condition
@@ -176,69 +200,162 @@ void CMP5::PrimaryAttack()
 		m_flNextPrimaryAttack = UTIL_WeaponTimeBase() + 0.1;
 
 	m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + UTIL_SharedRandomFloat(m_pPlayer->random_seed, 10, 15);
+
+	m_bSprintingAnim = m_bWalkingAnim = false;
+	m_flAnimTime = gpGlobals->time + 0.4f;
+
+//	if (m_bAiming)
+//		m_pPlayer->SetDOF(1.0f, -.1f);
+//	else
+		m_pPlayer->SetDOF(0.0f, 0.0f);
 }
 
 
 
 void CMP5::SecondaryAttack()
 {
-	// don't fire underwater
-	if (m_pPlayer->pev->waterlevel == 3)
+	m_bAiming = !m_bAiming;
+
+	if (m_bAiming)
 	{
-		PlayEmptySound();
-		m_flNextPrimaryAttack = 0.15;
-		return;
+		//m_pPlayer->SetDOF(1.0f, -.1f);
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_IN : GLOCK_AIM_IN_EMPTY);
+		m_flAnimTime = gpGlobals->time + 0.35f;
+		m_pPlayer->m_iFOV = 40;
+	}
+	else
+	{
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_OUT : GLOCK_AIM_OUT_EMPTY);
+		m_flAnimTime = gpGlobals->time + 0.2f;
+		m_pPlayer->m_iFOV = 0;
 	}
 
-	if (m_pPlayer->m_rgAmmo[m_iSecondaryAmmoType] == 0)
-	{
-		PlayEmptySound();
-		return;
-	}
-
-	m_pPlayer->m_iWeaponVolume = NORMAL_GUN_VOLUME;
-	m_pPlayer->m_iWeaponFlash = BRIGHT_GUN_FLASH;
-
-	m_pPlayer->m_iExtraSoundTypes = bits_SOUND_DANGER;
-	m_pPlayer->m_flStopExtraSoundTime = UTIL_WeaponTimeBase() + 0.2;
-
-	m_pPlayer->m_rgAmmo[m_iSecondaryAmmoType]--;
-
-	// player "shoot" animation
-	m_pPlayer->SetAnimation(PLAYER_ATTACK1);
-
-	UTIL_MakeVectors(m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle);
-
-	// we don't add in player velocity anymore.
-	CGrenade::ShootContact(m_pPlayer->pev,
-		m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs + gpGlobals->v_forward * 16,
-		gpGlobals->v_forward * 800);
-
-	int flags;
-#if defined(CLIENT_WEAPONS)
-	flags = UTIL_DefaultPlaybackFlags();
-#else
-	flags = 0;
-#endif
-
-	PLAYBACK_EVENT(flags, m_pPlayer->edict(), m_usMP52);
-
-	m_flNextPrimaryAttack = GetNextAttackDelay(1);
-	m_flNextSecondaryAttack = UTIL_WeaponTimeBase() + 1;
-	m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 5; // idle pretty soon after shooting.
-
-	if (0 == m_pPlayer->m_rgAmmo[m_iSecondaryAmmoType])
-		// HEV suit - indicate out of ammo condition
-		m_pPlayer->SetSuitUpdate("!HEV_AMO0", false, 0);
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = GetNextAttackDelay(0.35f);
 }
 
 void CMP5::Reload()
 {
-	if (m_pPlayer->ammo_9mm <= 0)
-		return;
+	bool iResult;
 
-	DefaultReload(MP5_MAX_CLIP, MP5_RELOAD, 1.5);
+	if (m_iClip == 0)
+		iResult = DefaultReload(iMaxClip(), GLOCK_RELOAD, 4.32);
+	else
+		iResult = DefaultReload(iMaxClip(), GLOCK_RELOAD_NOT_EMPTY, 2.92);
+
+	if (iResult)
+	{
+		m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + UTIL_SharedRandomFloat(m_pPlayer->random_seed, 10, 15);
+
+		m_bSprintingAnim = m_bWalkingAnim = false;
+		m_flAnimTime = gpGlobals->time + 1.5f;
+		if (m_iClip == 0)
+			m_pPlayer->SetDOF(0.45f, 4.32);
+		else
+			m_pPlayer->SetDOF(0.45f, 2.9f);
+
+		m_pPlayer->m_iFOV = 0;
+		m_bAiming = false;
+	}
+	else
+	{
+		if ((m_pPlayer->m_afButtonPressed & IN_RELOAD) == 0 || m_flInspectDelay > gpGlobals->time)
+		{
+			return;
+		}
+
+		m_pPlayer->SetDOF(1.0f, 2.9f);
+
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AMMO_CHECK : GLOCK_AMMO_CHECK_EMPTY);
+
+		m_bSprintingAnim = m_bWalkingAnim = false;
+		m_flAnimTime = gpGlobals->time + 2.9f;
+		m_flInspectDelay = gpGlobals->time + 2.9f;
+
+		m_pPlayer->m_iFOV = 0;
+		m_bAiming = false;
+	}
 }
+
+
+void CMP5::DynamicAnims()
+{
+	if (m_bAiming)
+	{
+		m_flAnimTime = 0.0f;
+		m_bWalkingAnim = false;
+		m_bSprintingAnim = false;
+		if (m_flAnimTime != 0.0f && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_IDLE : GLOCK_AIM_IDLE_EMPTY);
+			m_flAnimTime = gpGlobals->time + 0.1f;
+		}
+		return;
+	}
+
+	if ((m_pPlayer->m_afButtonPressed & IN_JUMP) != 0)
+	{
+		if (!m_bJumpAnim)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_JUMP : GLOCK_JUMP_EMPTY);
+			m_flAnimTime = gpGlobals->time + 0.2f;
+			m_bJumpAnim = true;
+			m_bSprintingAnim = m_bWalkingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+	}
+	else if ((m_pPlayer->pev->flags & FL_ONGROUND) == 0)
+	{
+		if (!m_bJumpAnim && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_IDLE1 : GLOCK_IDLE_EMPTY);
+			m_flAnimTime = 0.0f;
+			m_bJumpAnim = true;
+			m_bSprintingAnim = m_bWalkingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+	}
+	else if (m_pPlayer->pev->velocity.Length2D() > 150.0f)
+	{
+		if ((m_pPlayer->pev->button & IN_ALT1) != 0)
+		{
+			if (!m_bSprintingAnim && m_flAnimTime < gpGlobals->time)
+			{
+				SendWeaponAnim((m_iClip != 0) ? GLOCK_SPRINT : GLOCK_SPRINT_EMPTY);
+				m_flAnimTime = gpGlobals->time + 0.2f;
+				m_bWalkingAnim = true;
+				m_bSprintingAnim = true;
+				m_pPlayer->SetDOF(0.0f, 0.0f);
+			}
+		}
+		else
+		{
+			if ((!m_bWalkingAnim || m_bSprintingAnim) && m_flAnimTime < gpGlobals->time)
+			{
+				SendWeaponAnim((m_iClip != 0) ? GLOCK_WALK : GLOCK_WALK_EMPTY);
+				m_flAnimTime = gpGlobals->time + 0.4f;
+				m_bWalkingAnim = true;
+				m_bSprintingAnim = false;
+				m_pPlayer->SetDOF(0.0f, 0.0f);
+			}
+		}
+		m_bJumpAnim = false;
+	}
+	else
+	{
+		if (m_bWalkingAnim && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_IDLE1 : GLOCK_IDLE_EMPTY);
+			m_flAnimTime = 0.0f;
+			m_bWalkingAnim = false;
+			m_bSprintingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+		m_bJumpAnim = false;
+	}
+}
+
 
 
 void CMP5::WeaponIdle()
@@ -247,25 +364,11 @@ void CMP5::WeaponIdle()
 
 	m_pPlayer->GetAutoaimVector(AUTOAIM_5DEGREES);
 
+	DynamicAnims();
+	m_bFirstDraw = false;
+
 	if (m_flTimeWeaponIdle > UTIL_WeaponTimeBase())
 		return;
-
-	int iAnim;
-	switch (RANDOM_LONG(0, 1))
-	{
-	case 0:
-		iAnim = MP5_LONGIDLE;
-		break;
-
-	default:
-	case 1:
-		iAnim = MP5_IDLE1;
-		break;
-	}
-
-	SendWeaponAnim(iAnim);
-
-	m_flTimeWeaponIdle = UTIL_SharedRandomFloat(m_pPlayer->random_seed, 10, 15); // how long till we do this again.
 }
 
 

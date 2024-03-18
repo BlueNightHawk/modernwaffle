@@ -116,7 +116,6 @@ void CPipewrench::SecondaryAttack()
 
 void CPipewrench::Smack()
 {
-	DecalGunshot(&m_trHit, BULLET_PLAYER_CROWBAR);
 }
 
 void CPipewrench::SwingAgain()
@@ -299,8 +298,9 @@ bool CPipewrench::Swing(const bool bFirst)
 
 		m_pPlayer->m_iWeaponVolume = flVol * PIPEWRENCH_WALLHIT_VOLUME;
 
-		SetThink(&CPipewrench::Smack);
-		pev->nextthink = gpGlobals->time + 0.2;
+		// RENDERERS START
+		DecalGunshot(&m_trHit, BULLET_PLAYER_CROWBAR, vecSrc, vecEnd);
+		// RENDERERS END
 #endif
 	}
 	return bDidHit;

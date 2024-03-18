@@ -32,6 +32,8 @@ void CGlock::Spawn()
 
 	m_iDefaultAmmo = GLOCK_DEFAULT_GIVE;
 
+	m_bFirstDraw = true;
+
 	FallInit(); // get ready to fall down.
 }
 
@@ -82,13 +84,46 @@ void CGlock::IncrementAmmo(CBasePlayer* pPlayer)
 
 bool CGlock::Deploy()
 {
-	// pev->body = 1;
-	return DefaultDeploy("models/v_9mmhandgun.mdl", "models/p_9mmhandgun.mdl", GLOCK_DRAW, "onehanded");
+	int iAnim = 0;
+
+	if (m_bFirstDraw)
+	{
+		m_pPlayer->SetDOF(1.0f, 1.0f);
+		iAnim = GLOCK_DRAW_FIRSTDRAW;
+		m_flAnimTime = gpGlobals->time + 1.43f;
+	}
+	else
+	{
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		m_flAnimTime = gpGlobals->time + 0.4f;
+		iAnim = (m_iClip == 0) ? GLOCK_DRAW_EMPTY : GLOCK_DRAW;
+	}
+	m_bSprintingAnim = m_bWalkingAnim = false;
+	m_bAiming = false;
+	return DefaultDeploy("models/v_9mmhandgun.mdl", "models/p_9mmhandgun.mdl", iAnim, "onehanded");
 }
 
 void CGlock::SecondaryAttack()
 {
-	GlockFire(0.1, 0.2, false);
+	m_bAiming = !m_bAiming;
+
+	if (m_bAiming)
+	{
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_IN : GLOCK_AIM_IN_EMPTY);
+		m_flAnimTime = gpGlobals->time + 0.35f;
+		m_pPlayer->m_iFOV = 80;
+	}
+	else
+	{
+		m_pPlayer->SetDOF(0.0f, 0.0f);
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_OUT : GLOCK_AIM_OUT_EMPTY);
+		m_flAnimTime = gpGlobals->time + 0.6f;
+		m_pPlayer->m_iFOV = 0;
+	}
+
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = GetNextAttackDelay(0.35f);
+
 }
 
 void CGlock::PrimaryAttack()
@@ -152,7 +187,7 @@ void CGlock::GlockFire(float flSpread, float flCycleTime, bool fUseAutoAim)
 	Vector vecDir;
 	vecDir = m_pPlayer->FireBulletsPlayer(1, vecSrc, vecAiming, Vector(flSpread, flSpread, flSpread), 8192, BULLET_PLAYER_9MM, 0, 0, m_pPlayer->pev, m_pPlayer->random_seed);
 
-	PLAYBACK_EVENT_FULL(flags, m_pPlayer->edict(), fUseAutoAim ? m_usFireGlock1 : m_usFireGlock2, 0.0, g_vecZero, g_vecZero, vecDir.x, vecDir.y, 0, 0, (m_iClip == 0) ? 1 : 0, 0);
+	PLAYBACK_EVENT_FULL(flags, m_pPlayer->edict(), fUseAutoAim ? m_usFireGlock1 : m_usFireGlock2, 0.0, g_vecZero, g_vecZero, vecDir.x, vecDir.y, 0, 0, (m_iClip == 0) ? 1 : 0, m_bAiming ? 1 : 0);
 
 	m_flNextPrimaryAttack = m_flNextSecondaryAttack = GetNextAttackDelay(flCycleTime);
 
@@ -161,27 +196,130 @@ void CGlock::GlockFire(float flSpread, float flCycleTime, bool fUseAutoAim)
 		m_pPlayer->SetSuitUpdate("!HEV_AMO0", false, 0);
 
 	m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + UTIL_SharedRandomFloat(m_pPlayer->random_seed, 10, 15);
+
+	m_bSprintingAnim = m_bWalkingAnim = false;
+	m_flAnimTime = gpGlobals->time + 0.4f;
+	m_pPlayer->SetDOF(0.0f, 0.0f);
 }
 
 
 void CGlock::Reload()
 {
-	if (m_pPlayer->ammo_9mm <= 0)
-		return;
-
 	bool iResult;
 
 	if (m_iClip == 0)
-		iResult = DefaultReload(17, GLOCK_RELOAD, 1.5);
+		iResult = DefaultReload(17, GLOCK_RELOAD, 3.8);
 	else
-		iResult = DefaultReload(17, GLOCK_RELOAD_NOT_EMPTY, 1.5);
+		iResult = DefaultReload(17, GLOCK_RELOAD_NOT_EMPTY, 3.0);
 
 	if (iResult)
 	{
 		m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + UTIL_SharedRandomFloat(m_pPlayer->random_seed, 10, 15);
+
+		m_bSprintingAnim = m_bWalkingAnim = false;
+		m_flAnimTime = gpGlobals->time + 1.5f;
+		m_pPlayer->SetDOF(0.45f, 2.9f);
+
+		m_pPlayer->m_iFOV = 0;
+		m_bAiming = false;
+	}
+	else
+	{
+		if ((m_pPlayer->m_afButtonPressed & IN_RELOAD) == 0 || m_flInspectDelay > gpGlobals->time )
+		{
+			return;
+		}
+
+		m_pPlayer->SetDOF(1.0f, 3.9f);
+
+		SendWeaponAnim((m_iClip != 0) ? GLOCK_AMMO_CHECK : GLOCK_AMMO_CHECK_EMPTY);
+
+		m_bSprintingAnim = m_bWalkingAnim = false;
+		m_flAnimTime = gpGlobals->time + 3.9f;
+		m_flInspectDelay = gpGlobals->time + 3.9f;
+
+		m_pPlayer->m_iFOV = 0;
+		m_bAiming = false;
 	}
 }
 
+
+void CGlock::DynamicAnims()
+{
+	if (m_bAiming)
+	{
+		m_flAnimTime = 0.0f;
+		m_bWalkingAnim = false;
+		m_bSprintingAnim = false;
+		if (m_flAnimTime != 0.0f && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_AIM_IDLE : GLOCK_AIM_IDLE_EMPTY);
+			m_flAnimTime = gpGlobals->time + 0.1f;
+		}
+		return;
+	}
+
+	if ((m_pPlayer->m_afButtonPressed & IN_JUMP) != 0)
+	{
+		if (!m_bJumpAnim)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_JUMP : GLOCK_JUMP_EMPTY);
+			m_flAnimTime = gpGlobals->time + 0.2f;
+			m_bJumpAnim = true;
+			m_bSprintingAnim = m_bWalkingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+	}
+	else if ((m_pPlayer->pev->flags & FL_ONGROUND) == 0)
+	{
+		if (!m_bJumpAnim && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_IDLE1 : GLOCK_IDLE_EMPTY);
+			m_flAnimTime = 0.0f;
+			m_bJumpAnim = true;
+			m_bSprintingAnim = m_bWalkingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+	}
+	else if (m_pPlayer->pev->velocity.Length2D() > 150.0f)
+	{
+		if ((m_pPlayer->pev->button & IN_ALT1) != 0)
+		{
+			if (!m_bSprintingAnim && m_flAnimTime < gpGlobals->time)
+			{
+				SendWeaponAnim((m_iClip != 0) ? GLOCK_SPRINT : GLOCK_SPRINT_EMPTY);
+				m_flAnimTime = gpGlobals->time + 0.2f;
+				m_bWalkingAnim = true;
+				m_bSprintingAnim = true;
+				m_pPlayer->SetDOF(0.0f, 0.0f);
+			}
+		}
+		else
+		{
+			if ((!m_bWalkingAnim || m_bSprintingAnim) && m_flAnimTime < gpGlobals->time)
+			{
+				SendWeaponAnim((m_iClip != 0) ? GLOCK_WALK : GLOCK_WALK_EMPTY);
+				m_flAnimTime = gpGlobals->time + 0.4f;
+				m_bWalkingAnim = true;
+				m_bSprintingAnim = false;
+				m_pPlayer->SetDOF(0.0f, 0.0f);
+			}
+		}
+		m_bJumpAnim = false;
+	}
+	else
+	{
+		if (m_bWalkingAnim && m_flAnimTime < gpGlobals->time)
+		{
+			SendWeaponAnim((m_iClip != 0) ? GLOCK_IDLE1 : GLOCK_IDLE_EMPTY);
+			m_flAnimTime = 0.0f;
+			m_bWalkingAnim = false;
+			m_bSprintingAnim = false;
+			m_pPlayer->SetDOF(0.0f, 0.0f);
+		}
+		m_bJumpAnim = false;
+	}
+}
 
 
 void CGlock::WeaponIdle()
@@ -190,32 +328,12 @@ void CGlock::WeaponIdle()
 
 	m_pPlayer->GetAutoaimVector(AUTOAIM_10DEGREES);
 
+	DynamicAnims();
+
+	m_bFirstDraw = false;
+
 	if (m_flTimeWeaponIdle > UTIL_WeaponTimeBase())
 		return;
-
-	// only idle if the slid isn't back
-	if (m_iClip != 0)
-	{
-		int iAnim;
-		float flRand = UTIL_SharedRandomFloat(m_pPlayer->random_seed, 0.0, 1.0);
-
-		if (flRand <= 0.3 + 0 * 0.75)
-		{
-			iAnim = GLOCK_IDLE3;
-			m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 49.0 / 16;
-		}
-		else if (flRand <= 0.6 + 0 * 0.875)
-		{
-			iAnim = GLOCK_IDLE1;
-			m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 60.0 / 16.0;
-		}
-		else
-		{
-			iAnim = GLOCK_IDLE2;
-			m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 40.0 / 16.0;
-		}
-		SendWeaponAnim(iAnim);
-	}
 }
 
 

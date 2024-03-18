@@ -33,6 +33,9 @@
 #include "game.h"
 #include "UserMessages.h"
 
+#include <filesystem>
+#include <fstream>
+
 float UTIL_WeaponTimeBase()
 {
 #if defined(CLIENT_WEAPONS)
@@ -1176,18 +1179,29 @@ void UTIL_BloodStream(const Vector& origin, const Vector& direction, int color, 
 	if (g_Language == LANGUAGE_GERMAN && color == BLOOD_COLOR_RED)
 		color = 0;
 
-
-	MESSAGE_BEGIN(MSG_PVS, SVC_TEMPENTITY, origin);
-	WRITE_BYTE(TE_BLOODSTREAM);
-	WRITE_COORD(origin.x);
-	WRITE_COORD(origin.y);
-	WRITE_COORD(origin.z);
-	WRITE_COORD(direction.x);
-	WRITE_COORD(direction.y);
-	WRITE_COORD(direction.z);
-	WRITE_BYTE(color);
-	WRITE_BYTE(V_min(amount, 255));
-	MESSAGE_END();
+// RENDERERS START
+	if (CVAR_GET_FLOAT("te_particles") >= 1)
+	{
+		if (color == BLOOD_COLOR_RED)
+			UTIL_Particle("blood_effects_cluster.txt", origin, direction, 1);
+		else
+			UTIL_Particle("blood_effects_cluster_alien.txt", origin, direction, 1);
+	}
+	else
+	{
+		MESSAGE_BEGIN(MSG_PVS, SVC_TEMPENTITY, origin);
+		WRITE_BYTE(TE_BLOODSTREAM);
+		WRITE_COORD(origin.x);
+		WRITE_COORD(origin.y);
+		WRITE_COORD(origin.z);
+		WRITE_COORD(direction.x);
+		WRITE_COORD(direction.y);
+		WRITE_COORD(direction.z);
+		WRITE_BYTE(color);
+		WRITE_BYTE(V_min(amount, 255));
+		MESSAGE_END();
+	}
+	// RENDERERS END
 }
 
 void UTIL_BloodDrips(const Vector& origin, const Vector& direction, int color, int amount)
@@ -1210,16 +1224,29 @@ void UTIL_BloodDrips(const Vector& origin, const Vector& direction, int color, i
 	if (amount > 255)
 		amount = 255;
 
-	MESSAGE_BEGIN(MSG_PVS, SVC_TEMPENTITY, origin);
-	WRITE_BYTE(TE_BLOODSPRITE);
-	WRITE_COORD(origin.x); // pos
-	WRITE_COORD(origin.y);
-	WRITE_COORD(origin.z);
-	WRITE_SHORT(g_sModelIndexBloodSpray);		  // initial sprite model
-	WRITE_SHORT(g_sModelIndexBloodDrop);		  // droplet sprite models
-	WRITE_BYTE(color);							  // color index into host_basepal
-	WRITE_BYTE(V_min(V_max(3, amount / 10), 16)); // size
-	MESSAGE_END();
+// RENDERERS START
+	if (CVAR_GET_FLOAT("te_particles") >= 1)
+	{
+		if (color == BLOOD_COLOR_RED)
+			UTIL_Particle("blood_effects_cluster.txt", origin, direction, 1);
+		else
+			UTIL_Particle("blood_effects_cluster_alien.txt", origin, direction, 1);
+	}
+	else
+	{
+		MESSAGE_BEGIN(MSG_PVS, SVC_TEMPENTITY, origin);
+		WRITE_BYTE(TE_BLOODSTREAM);
+		WRITE_COORD(origin.x);
+		WRITE_COORD(origin.y);
+		WRITE_COORD(origin.z);
+		WRITE_COORD(direction.x);
+		WRITE_COORD(direction.y);
+		WRITE_COORD(direction.z);
+		WRITE_BYTE(color);
+		WRITE_BYTE(V_min(amount, 255));
+		MESSAGE_END();
+	}
+	// RENDERERS END
 }
 
 Vector UTIL_RandomBloodVector()
@@ -1236,13 +1263,22 @@ Vector UTIL_RandomBloodVector()
 
 void UTIL_BloodDecalTrace(TraceResult* pTrace, int bloodColor)
 {
+	// RENDERERS START
 	if (UTIL_ShouldShowBlood(bloodColor))
 	{
-		if (bloodColor == BLOOD_COLOR_RED)
-			UTIL_DecalTrace(pTrace, DECAL_BLOOD1 + RANDOM_LONG(0, 5));
-		else
-			UTIL_DecalTrace(pTrace, DECAL_YBLOOD1 + RANDOM_LONG(0, 5));
+		if (VARS(pTrace->pHit)->rendermode != kRenderTransAlpha)
+		{
+			if (bloodColor == BLOOD_COLOR_RED)
+			{
+				UTIL_CustomDecal(pTrace, "redblood");
+			}
+			else
+			{
+				UTIL_CustomDecal(pTrace, "yellowblood");
+			}
+		}
 	}
+	// RENDERERS END
 }
 
 
@@ -1583,6 +1619,15 @@ void UTIL_Remove(CBaseEntity* pEntity)
 {
 	if (!pEntity)
 		return;
+
+// RENDERERS START
+	if (gmsgFreeEnt)
+	{
+		MESSAGE_BEGIN(MSG_ALL, gmsgFreeEnt);
+		WRITE_SHORT(pEntity->entindex());
+		MESSAGE_END();
+	}
+	// RENDERERS END
 
 	pEntity->UpdateOnRemove();
 	pEntity->pev->flags |= FL_KILLME;
@@ -2580,4 +2625,71 @@ bool UTIL_IsMultiplayer()
 bool UTIL_IsCTF()
 {
 	return g_pGameRules->IsCTF();
+}
+
+// RENDERERS START
+void UTIL_CustomDecal(TraceResult* pTrace, const char* name, int persistent)
+{
+	if (pTrace->flFraction == 1.0)
+		return;
+
+	MESSAGE_BEGIN(MSG_ALL, gmsgCreateDecal, NULL);
+	WRITE_COORD(pTrace->vecEndPos.x);
+	WRITE_COORD(pTrace->vecEndPos.y);
+	WRITE_COORD(pTrace->vecEndPos.z);
+	WRITE_COORD(pTrace->vecPlaneNormal.x);
+	WRITE_COORD(pTrace->vecPlaneNormal.y);
+	WRITE_COORD(pTrace->vecPlaneNormal.z);
+	WRITE_BYTE(persistent);
+	WRITE_STRING(name);
+	MESSAGE_END();
+}
+
+void UTIL_StudioDecal(Vector normal, Vector position, const char* name, int entindex)
+{
+	MESSAGE_BEGIN(MSG_BROADCAST, gmsgStudioDecal);
+	WRITE_COORD(position.x);
+	WRITE_COORD(position.y);
+	WRITE_COORD(position.z);
+	WRITE_COORD(normal.x);
+	WRITE_COORD(normal.y);
+	WRITE_COORD(normal.z);
+	WRITE_SHORT(entindex);
+	WRITE_STRING(name);
+	MESSAGE_END();
+}
+
+void UTIL_Particle(char* szName, Vector vecOrigin, Vector vDirection, int iType)
+{
+	MESSAGE_BEGIN(MSG_ALL, gmsgCreateSystem, NULL);
+	WRITE_COORD(vecOrigin.x);
+	WRITE_COORD(vecOrigin.y);
+	WRITE_COORD(vecOrigin.z);
+	WRITE_COORD(vDirection.x);
+	WRITE_COORD(vDirection.y);
+	WRITE_COORD(vDirection.z);
+	WRITE_BYTE(iType);
+	WRITE_STRING(szName);
+	WRITE_LONG(0);
+	MESSAGE_END();
+}
+// RENDERERS END
+
+
+unsigned short UTIL_PrecacheEvent(int type, const char *psz)
+{
+	byte* pFile = LOAD_FILE_FOR_ME(psz, 0);
+
+	if (!pFile)
+	{
+		char gamedir[512];
+		g_engfuncs.pfnGetGameDir(gamedir);
+		std::string event_dir = (std::string)gamedir + "/" + psz;
+
+		std::ofstream event(event_dir); 
+	}
+	else
+		FREE_FILE(pFile);
+
+	return g_engfuncs.pfnPrecacheEvent(type, psz);
 }

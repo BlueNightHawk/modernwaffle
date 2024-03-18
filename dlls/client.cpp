@@ -1333,6 +1333,16 @@ int AddToFullPack(struct entity_state_s* state, int e, edict_t* ent, edict_t* ho
 		return 0;
 	}
 
+	// RENDERERS START
+	if (ent != host && ent->v.renderfx != 70)
+	{
+		if (!ENGINE_CHECK_VISIBILITY((const struct edict_s*)ent, pSet))
+		{
+			return 0;
+		}
+	}
+	// RENDERERS END
+
 	// Ignore if not the host and not touching a PVS/PAS leaf
 	// If pSet is NULL, then the test will always succeed and the entity will be added to the update
 	if (ent != host)

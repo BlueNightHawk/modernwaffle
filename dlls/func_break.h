@@ -56,7 +56,9 @@ public:
 	bool IsBreakable();
 	bool SparkWhenHit();
 
-	int DamageDecal(int bitsDamageType) override;
+// RENDERERS START
+	char* DamageDecal(int bitsDamageType) override;
+	// RENDERERS END
 
 	void EXPORT Die();
 	int ObjectCaps() override { return (CBaseEntity::ObjectCaps() & ~FCAP_ACROSS_TRANSITION); }

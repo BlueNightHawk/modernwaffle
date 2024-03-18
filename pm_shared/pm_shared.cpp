@@ -30,6 +30,8 @@
 #include <stdlib.h> // atoi
 #include <ctype.h>	// isspace
 
+#include <algorithm>
+
 #ifdef CLIENT_DLL
 // Spectator Mode
 bool iJumpSpectator;
@@ -2969,6 +2971,17 @@ void PM_CheckParamters()
 		pmove->maxspeed = V_min(maxspeed, pmove->maxspeed);
 	}
 
+	if ((pmove->cmd.buttons & IN_ALT1) != 0)
+	{
+		pmove->fuser1 += pmove->frametime * 100.0f;
+	}
+	else
+	{
+		pmove->fuser1 -= pmove->frametime * 150.0f;
+	}
+	pmove->fuser1 = std::clamp(pmove->fuser1, 0.0f, 120.0f);
+	pmove->maxspeed += pmove->fuser1;
+
 	if ((spd != 0.0) &&
 		(spd > pmove->maxspeed))
 	{
@@ -3079,7 +3092,6 @@ void PM_PlayerMove(qboolean server)
 	AngleVectors(pmove->angles, &pmove->forward, &pmove->right, &pmove->up);
 
 	// PM_ShowClipBox();
-
 	// Special handling for spectator and observers. (iuser1 is set if the player's in observer mode)
 	if (0 != pmove->spectator || pmove->iuser1 > 0)
 	{

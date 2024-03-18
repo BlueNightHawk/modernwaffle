@@ -62,7 +62,7 @@ void CShotgun::Precache()
 	PRECACHE_SOUND("weapons/357_cock1.wav"); // gun empty sound
 	PRECACHE_SOUND("weapons/scock1.wav");	 // cock gun
 
-	m_usSingleFire = PRECACHE_EVENT(1, "events/shotgun1.sc");
+	m_usSingleFire = PRECACHE_EVENT(1, "events/ashotgun1.sc");
 	m_usDoubleFire = PRECACHE_EVENT(1, "events/shotgun2.sc");
 }
 

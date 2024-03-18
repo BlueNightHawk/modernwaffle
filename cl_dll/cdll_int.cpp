@@ -38,9 +38,37 @@
 #include "vgui_TeamFortressViewport.h"
 #include "filesystem_utils.h"
 
+
+// RENDERERS START
+#include "rendererdefs.h"
+#include "particle_engine.h"
+#include "bsprenderer.h"
+#include "propmanager.h"
+#include "textureloader.h"
+#include "watershader.h"
+#include "mirrormanager.h"
+
+#include "studio.h"
+#include "StudioModelRenderer.h"
+#include "GameStudioModelRenderer.h"
+
+extern CGameStudioModelRenderer g_StudioRenderer;
+extern engine_studio_api_t IEngineStudio;
+// RENDERERS END
+
 cl_enginefunc_t gEngfuncs;
 CHud gHUD;
 TeamFortressViewport* gViewPort = NULL;
+
+// RENDERERS START
+CBSPRenderer gBSPRenderer;
+CParticleEngine gParticleEngine;
+CWaterShader gWaterShader;
+
+CTextureLoader gTextureLoader;
+CPropManager gPropManager;
+CMirrorManager gMirrorManager;
+// RENDERERS END
 
 
 #include "particleman.h"
@@ -132,6 +160,8 @@ static bool CL_InitClient()
 	return true;
 }
 
+void InitCatch();
+
 int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 {
 	gEngfuncs = *pEnginefuncs;
@@ -171,11 +201,13 @@ int DLLEXPORT HUD_VidInit()
 	//	RecClHudVidInit();
 
 	//Reset to default on new map load
-	UnpackRGB(giR, giG, giB, RGB_HUD_COLOR);
+	//UnpackRGB(giR, giG, giB, RGB_HUD_COLOR);
+	giR = giG = giB = 255;
 
 	gHUD.VidInit();
 
 	VGui_Startup();
+	InitCatch();
 
 	return 1;
 }
@@ -197,6 +229,10 @@ void DLLEXPORT HUD_Init()
 
 	gHUD.Init();
 	Scheme_Init();
+
+	// RENDERERS START
+	R_DisableSteamMSAA();
+	// RENDERERS END
 }
 
 
@@ -214,6 +250,10 @@ int DLLEXPORT HUD_Redraw(float time, int intermission)
 	//	RecClHudRedraw(time, intermission);
 
 	gHUD.Redraw(time, 0 != intermission);
+
+	// RENDERERS START
+	HUD_PrintSpeeds();
+	// RENDERERS END
 
 	return 1;
 }

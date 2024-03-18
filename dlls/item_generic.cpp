@@ -32,13 +32,41 @@ public:
 
 	float m_lastTime;
 	int m_iSequence;
+
+	virtual bool Save(CSave& save) override;
+	virtual bool Restore(CRestore& restore) override;
+	static TYPEDESCRIPTION m_SaveData[];
+
+	bool m_fDisableShadows;
+	bool m_fDisableDrawing;
 };
 
 LINK_ENTITY_TO_CLASS(item_generic, CGenericItem);
+LINK_ENTITY_TO_CLASS(item_prop, CGenericItem);
+LINK_ENTITY_TO_CLASS(prop_physics, CGenericItem);
+
+
+TYPEDESCRIPTION CGenericItem::m_SaveData[] =
+	{
+		DEFINE_FIELD(CGenericItem, m_fDisableShadows, FIELD_BOOLEAN),
+		DEFINE_FIELD(CGenericItem, m_fDisableDrawing, FIELD_BOOLEAN),
+};
+
+IMPLEMENT_SAVERESTORE(CGenericItem, CBaseAnimating);
 
 bool CGenericItem::KeyValue(KeyValueData* pkvd)
 {
-	if (FStrEq("sequencename", pkvd->szKeyName))
+	if (FStrEq(pkvd->szKeyName, "DisableShadows"))
+	{
+		m_fDisableShadows = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "DisableDrawing"))
+	{
+		m_fDisableDrawing = atoi(pkvd->szValue);
+		return true;
+	}
+	else if (FStrEq("sequencename", pkvd->szKeyName))
 	{
 		m_iSequence = ALLOC_STRING(pkvd->szValue);
 		return true;
@@ -87,6 +115,12 @@ void CGenericItem::Spawn()
 			UTIL_Remove(this);
 		}
 	}
+
+	if (m_fDisableShadows)
+		pev->effects |= FL_NOSHADOW;
+
+	if (m_fDisableDrawing)
+		pev->effects |= FL_NOMODEL;
 }
 
 void CGenericItem::StartItem()

@@ -69,8 +69,11 @@ inline enginefuncs_t g_engfuncs;
 #define RANDOM_FLOAT (*g_engfuncs.pfnRandomFloat)
 #define GETPLAYERAUTHID (*g_engfuncs.pfnGetPlayerAuthId)
 
+#include <assert.h>
 inline void MESSAGE_BEGIN(int msg_dest, int msg_type, const float* pOrigin = NULL, edict_t* ed = NULL)
 {
+	assert(msg_type != 0);
+	
 	(*g_engfuncs.pfnMessageBegin)(msg_dest, msg_type, pOrigin, ed);
 }
 #define MESSAGE_END (*g_engfuncs.pfnMessageEnd)
@@ -141,7 +144,12 @@ inline T* GET_PRIVATE(edict_t* pent)
 #define NUMBER_OF_ENTITIES (*g_engfuncs.pfnNumberOfEntities)
 #define IS_DEDICATED_SERVER (*g_engfuncs.pfnIsDedicatedServer)
 
+unsigned short UTIL_PrecacheEvent(int type, const char* psz);
+#ifndef CLIENT_DLL
+#define PRECACHE_EVENT UTIL_PrecacheEvent
+#else
 #define PRECACHE_EVENT (*g_engfuncs.pfnPrecacheEvent)
+#endif
 #define PLAYBACK_EVENT_FULL (*g_engfuncs.pfnPlaybackEvent)
 
 #define ENGINE_SET_PVS (*g_engfuncs.pfnSetFatPVS)

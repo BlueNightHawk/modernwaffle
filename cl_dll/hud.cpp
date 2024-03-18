@@ -30,6 +30,29 @@
 #include "demo_api.h"
 #include "vgui_ScorePanel.h"
 
+#include "event_api.h"
+#include "com_model.h"
+#include "r_studioint.h"
+
+// RENDERERS START
+#include "bsprenderer.h"
+#include "propmanager.h"
+#include "textureloader.h"
+#include "particle_engine.h"
+#include "watershader.h"
+#include "mirrormanager.h"
+#include "r_efx.h"
+
+#include "studio.h"
+#include "StudioModelRenderer.h"
+#include "GameStudioModelRenderer.h"
+
+extern CGameStudioModelRenderer g_StudioRenderer;
+extern engine_studio_api_t IEngineStudio;
+// RENDERERS END
+
+extern engine_studio_api_s IEngineStudio;
+
 hud_player_info_t g_PlayerInfoList[MAX_PLAYERS_HUD + 1];	// player info from the engine
 extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1]; // additional player info sent directly to the client dll
 
@@ -89,6 +112,8 @@ cvar_t* cl_lw = NULL;
 cvar_t* cl_rollangle = nullptr;
 cvar_t* cl_rollspeed = nullptr;
 cvar_t* cl_bobtilt = nullptr;
+
+cvar_t* cl_righthand = nullptr;
 
 void ShutdownInput();
 
@@ -329,6 +354,55 @@ int __MsgFunc_StatsPlayer(const char* pszName, int iSize, void* pbuf)
 	return 0;
 }
 
+int __MsgFunc_SendAnim(const char* pszName, int iSize, void* pbuf)
+{
+	return static_cast<int>(gHUD.MsgFunc_SendAnim(pszName, iSize, pbuf));
+}
+
+int __MsgFunc_DOF(const char* pszName, int iSize, void* pbuf)
+{
+	return static_cast<int>(gHUD.MsgFunc_DOF(pszName, iSize, pbuf));
+}
+
+// RENDERERS START
+int __MsgFunc_SetFog(const char* pszName, int iSize, void* pbuf)
+{
+	return gHUD.MsgFunc_SetFog(pszName, iSize, pbuf);
+}
+int __MsgFunc_LightStyle(const char* pszName, int iSize, void* pbuf)
+{
+	return gHUD.MsgFunc_LightStyle(pszName, iSize, pbuf);
+}
+int __MsgFunc_CreateDecal(const char* pszName, int iSize, void* pbuf)
+{
+	return gBSPRenderer.MsgCustomDecal(pszName, iSize, pbuf);
+}
+int __MsgFunc_StudioDecal(const char* pszName, int iSize, void* pbuf)
+{
+	return gHUD.MsgFunc_StudioDecal(pszName, iSize, pbuf);
+}
+int __MsgFunc_SkyMark_S(const char* pszName, int iSize, void* pbuf)
+{
+	return gBSPRenderer.MsgSkyMarker_Sky(pszName, iSize, pbuf);
+}
+int __MsgFunc_SkyMark_W(const char* pszName, int iSize, void* pbuf)
+{
+	return gBSPRenderer.MsgSkyMarker_World(pszName, iSize, pbuf);
+}
+int __MsgFunc_DynLight(const char* pszName, int iSize, void* pbuf)
+{
+	return gBSPRenderer.MsgDynLight(pszName, iSize, pbuf);
+}
+int __MsgFunc_FreeEnt(const char* pszName, int iSize, void* pbuf)
+{
+	return gHUD.MsgFunc_FreeEnt(pszName, iSize, pbuf);
+}
+int __MsgFunc_Particle(const char* pszName, int iSize, void* pbuf)
+{
+	return gParticleEngine.MsgCreateSystem(pszName, iSize, pbuf);
+}
+// RENDERERS END
+
 // This is called every time the DLL is loaded
 void CHud::Init()
 {
@@ -376,9 +450,26 @@ void CHud::Init()
 	// VGUI Menus
 	HOOK_MESSAGE(VGUIMenu);
 
+	HOOK_MESSAGE(SendAnim);
+
+	HOOK_MESSAGE(DOF);
+
+// RENDERERS START
+	HOOK_MESSAGE(SetFog);
+	HOOK_MESSAGE(LightStyle);
+	HOOK_MESSAGE(CreateDecal);
+	HOOK_MESSAGE(StudioDecal);
+	HOOK_MESSAGE(SkyMark_S);
+	HOOK_MESSAGE(SkyMark_W);
+	HOOK_MESSAGE(DynLight);
+	HOOK_MESSAGE(FreeEnt);
+	HOOK_MESSAGE(Particle);
+
+	R_Init();
+	// RENDERERS END
+
 	CVAR_CREATE("hud_classautokill", "1", FCVAR_ARCHIVE | FCVAR_USERINFO); // controls whether or not to suicide immediately on TF class switch
 	CVAR_CREATE("hud_takesshots", "0", FCVAR_ARCHIVE);					   // controls whether or not to automatically take screenshots at the end of a round
-
 
 	m_iLogo = 0;
 	m_iFOV = 0;
@@ -393,6 +484,8 @@ void CHud::Init()
 	cl_rollangle = CVAR_CREATE("cl_rollangle", "2.0", FCVAR_ARCHIVE);
 	cl_rollspeed = CVAR_CREATE("cl_rollspeed", "200", FCVAR_ARCHIVE);
 	cl_bobtilt = CVAR_CREATE("cl_bobtilt", "0", FCVAR_ARCHIVE);
+
+	cl_righthand = CVAR_CREATE("cl_righthand", "1", FCVAR_ARCHIVE);
 
 	m_pSpriteList = NULL;
 
@@ -434,6 +527,11 @@ void CHud::Init()
 	m_Menu.Init();
 
 	MsgFunc_ResetHUD(0, 0, NULL);
+
+     // register the CVARs
+	gEngfuncs.pfnRegisterVariable("glow_blur_steps", "4", 0);
+	gEngfuncs.pfnRegisterVariable("glow_darken_steps", "3", 0);
+	gEngfuncs.pfnRegisterVariable("glow_strength", "2", 0);
 }
 
 // CHud destructor
@@ -455,6 +553,10 @@ CHud::~CHud()
 		}
 		m_pHudList = NULL;
 	}
+
+// RENDERERS START
+	R_Shutdown();
+	// RENDERERS END
 }
 
 // GetSpriteIndex()
@@ -578,6 +680,10 @@ void CHud::VidInit()
 	m_FlagIcons.VidInit();
 	m_PlayerBrowse.VidInit();
 	GetClientVoiceMgr()->VidInit();
+
+// RENDERERS START
+	R_VidInit();
+	// RENDERERS_END
 }
 
 bool CHud::MsgFunc_Logo(const char* pszName, int iSize, void* pbuf)

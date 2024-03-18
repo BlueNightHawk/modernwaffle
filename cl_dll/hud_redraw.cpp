@@ -102,6 +102,8 @@ bool CHud::Redraw(float flTime, bool intermission)
 	if (m_flTimeDelta < 0)
 		m_flTimeDelta = 0;
 
+	flDOFBlurAlpha = std::lerp(flDOFBlurAlpha, flMaxDofBlurAlpha, m_flTimeDelta * 9.0f);
+
 	// Bring up the scoreboard during intermission
 	if (gViewPort)
 	{
@@ -419,4 +421,42 @@ int CHud::DrawHudNumberReverse(int x, int y, int number, int flags, int r, int g
 	}
 
 	return x;
+}
+
+void CHud::ScreenShake(const Vector& center, float amplitude, float duration, float frequency, float radius)
+{
+	int i;
+	float localAmplitude;
+	screen_shake_t shake;
+	auto pPlayer = gEngfuncs.GetLocalPlayer();
+
+	shake.duration = duration;  // 4.12 fixed
+	shake.frequency = frequency; // 8.8 fixed
+
+
+	localAmplitude = 0;
+
+	if (radius <= 0)
+		localAmplitude = amplitude;
+	else
+	{
+		Vector delta = center - pPlayer->origin;
+		float distance = delta.Length();
+
+		// Had to get rid of this falloff - it didn't work well
+		if (distance < radius)
+			localAmplitude = amplitude; // radius - distance;
+	}
+	if (0 != localAmplitude)
+	{
+		shake.amplitude = localAmplitude; // 4.12 fixed
+
+		memcpy(&m_ScreenShake, &shake, sizeof(screen_shake_t));
+		V_LocalScreenShake(&m_ScreenShake, amplitude, duration, frequency);
+	}
+}
+
+void CHud::ScreenShake(float amplitude, float duration, float frequency)
+{
+	V_LocalScreenShake(&m_ScreenShake, amplitude, duration, frequency);
 }

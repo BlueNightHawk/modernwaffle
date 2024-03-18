@@ -435,9 +435,13 @@ extern void ClearMultiDamage();
 extern void ApplyMultiDamage(entvars_t* pevInflictor, entvars_t* pevAttacker);
 extern void AddMultiDamage(entvars_t* pevInflictor, CBaseEntity* pEntity, float flDamage, int bitsDamageType);
 
-extern void DecalGunshot(TraceResult* pTrace, int iBulletType);
+extern void DecalGunshot(TraceResult* pTrace, int iBulletType, Vector vecSrc, Vector vecEnd);
 extern void SpawnBlood(Vector vecSpot, int bloodColor, float flDamage);
-extern int DamageDecal(CBaseEntity* pEntity, int bitsDamageType);
+
+// RENDERERS START
+extern char* DamageDecal(CBaseEntity* pEntity, int bitsDamageType);
+// RENDERERS END
+
 extern void RadiusDamage(Vector vecSrc, entvars_t* pevInflictor, entvars_t* pevAttacker, float flDamage, float flRadius, int iClassIgnore, int bitsDamageType);
 
 typedef struct
@@ -519,15 +523,44 @@ void LoadVModel(const char* szViewModel, CBasePlayer* m_pPlayer);
 enum glock_e
 {
 	GLOCK_IDLE1 = 0,
-	GLOCK_IDLE2,
-	GLOCK_IDLE3,
+	GLOCK_IDLE_EMPTY,
 	GLOCK_SHOOT,
+	GLOCK_SHOOT2,
+	GLOCK_SHOOT_SIL,
 	GLOCK_SHOOT_EMPTY,
-	GLOCK_RELOAD,
+	GLOCK_SHOOT_EMPTY_SIL,
 	GLOCK_RELOAD_NOT_EMPTY,
+	GLOCK_RELOAD,
 	GLOCK_DRAW,
+	GLOCK_DRAW_FIRSTDRAW,
+	GLOCK_DRAW_EMPTY,
 	GLOCK_HOLSTER,
-	GLOCK_ADD_SILENCER
+	GLOCK_HOLSTER_EMPTY,
+	GLOCK_AIM_IN,
+	GLOCK_AIM_IN_EMPTY,
+	GLOCK_AIM_OUT,
+	GLOCK_AIM_OUT_EMPTY,
+	GLOCK_AIM_IDLE,
+	GLOCK_AIM_IDLE_EMPTY,
+	GLOCK_AIM_SHOOT,
+	GLOCK_AIM_SHOOT_SIL,
+	GLOCK_AIM_SHOOT_EMPTY,
+	GLOCK_AIM_SHOOT_EMPTY_SIL,
+	GLOCK_AIM_RELOAD,
+	GLOCK_AIM_RELOAD_EMPTY,
+	GLOCK_SPRINT,
+	GLOCK_SPRINT_EMPTY,
+	GLOCK_JUMP,
+	GLOCK_JUMP_EMPTY,
+	GLOCK_WALK,
+	GLOCK_WALK_EMPTY,
+	GLOCK_INSPECT_IN = 38,
+	GLOCK_INSPECT_OUT,
+	GLOCK_INSPECT_IDLE,
+	GLOCK_AMMO_CHECK,
+	GLOCK_AMMO_CHECK_EMPTY,
+	GLOCK_AMMO_CHECK_RELOAD,
+	GLOCK_AMMO_CHECK_RELOAD_EMPTY,
 };
 
 class CGlock : public CBasePlayerWeapon
@@ -547,6 +580,8 @@ public:
 	void Reload() override;
 	void WeaponIdle() override;
 
+	void DynamicAnims();
+
 	bool UseDecrement() override
 	{
 #if defined(CLIENT_WEAPONS)
@@ -555,6 +590,18 @@ public:
 		return false;
 #endif
 	}
+
+	float m_flAnimTime = 0.0f;
+	float m_flInspectDelay = 0.0f;
+
+	bool m_bWalkingAnim = false;
+	bool m_bSprintingAnim = false;
+	bool m_bJumpAnim = false;
+
+	bool m_bInspect = false;
+	bool m_bAiming = false;
+
+	bool m_bFirstDraw = false;
 
 private:
 	int m_iShell;
@@ -676,6 +723,19 @@ public:
 	void WeaponIdle() override;
 	float m_flNextAnimTime;
 	int m_iShell;
+
+	void DynamicAnims();
+	float m_flAnimTime = 0.0f;
+	float m_flInspectDelay = 0.0f;
+
+	bool m_bWalkingAnim = false;
+	bool m_bSprintingAnim = false;
+	bool m_bJumpAnim = false;
+
+	bool m_bInspect = false;
+	bool m_bAiming = false;
+
+	bool m_bFirstDraw = false;
 
 	bool UseDecrement() override
 	{

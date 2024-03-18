@@ -82,4 +82,19 @@ void LinkUserMessages()
 	gmsgTeamFull = g_engfuncs.pfnRegUserMsg("TeamFull", 1);
 	gmsgOldWeapon = g_engfuncs.pfnRegUserMsg("OldWeapon", 1);
 	gmsgCustomIcon = g_engfuncs.pfnRegUserMsg("CustomIcon", -1);
+
+	gmsgSendAnim = REG_USER_MSG("SendAnim", -1);
+	gmsgDOF = REG_USER_MSG("DOF", 1);
+
+// RENDERERS START
+	gmsgSetFog = REG_USER_MSG("SetFog", -1);
+	gmsgLightStyle = REG_USER_MSG("LightStyle", -1);
+	gmsgCreateDecal = REG_USER_MSG("CreateDecal", -1);
+	gmsgStudioDecal = REG_USER_MSG("StudioDecal", -1);
+	gmsgCreateDLight = REG_USER_MSG("DynLight", -1);
+	gmsgFreeEnt = REG_USER_MSG("FreeEnt", -1);
+	gmsgSkyMark_Sky = REG_USER_MSG("SkyMark_S", -1);
+	gmsgSkyMark_World = REG_USER_MSG("SkyMark_W", -1);
+	gmsgCreateSystem = REG_USER_MSG("Particle", -1);
+	// RENDERERS END
 }

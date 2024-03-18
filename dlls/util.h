@@ -572,6 +572,12 @@ CBaseEntity* UTIL_FindEntityForward(CBaseEntity* pMe);
 bool UTIL_IsMultiplayer();
 bool UTIL_IsCTF();
 
+// RENDERERS START
+extern void UTIL_Particle(char* szName, Vector vecOrigin, Vector vDirection, int iType);
+extern void UTIL_CustomDecal(TraceResult* pTrace, const char* name, int persistent = 0);
+extern void UTIL_StudioDecal(Vector normal, Vector position, const char* name, int entindex);
+// RENDERERS END
+
 inline void WRITE_COORD_VECTOR(const Vector& vec)
 {
 	WRITE_COORD(vec.x);

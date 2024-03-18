@@ -21,14 +21,14 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>NotSet</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>NotSet</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -66,12 +66,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <AdditionalOptions>/Zc:threadSafeInit- %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <ConformanceMode>false</ConformanceMode>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>..\..\utils\vgui\lib\win32_vc6\vgui.lib;wsock32.lib;..\..\lib\public\sdl2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\utils\vgui\lib\win32_vc6\vgui.lib;wsock32.lib;..\..\lib\public\sdl2.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <BaseAddress>
       </BaseAddress>
     </Link>
@@ -97,14 +98,15 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <AdditionalOptions>/Zc:threadSafeInit- %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <ConformanceMode>false</ConformanceMode>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>..\..\utils\vgui\lib\win32_vc6\vgui.lib;wsock32.lib;..\..\lib\public\sdl2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\utils\vgui\lib\win32_vc6\vgui.lib;wsock32.lib;..\..\lib\public\sdl2.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <BaseAddress>
       </BaseAddress>
     </Link>
@@ -121,6 +123,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\cl_dll\ammohistory.cpp" />
     <ClCompile Include="..\..\cl_dll\ammo_secondary.cpp" />
     <ClCompile Include="..\..\cl_dll\battery.cpp" />
+    <ClCompile Include="..\..\cl_dll\bsprenderer.cpp" />
     <ClCompile Include="..\..\cl_dll\cdll_int.cpp" />
     <ClCompile Include="..\..\cl_dll\com_weapons.cpp" />
     <ClCompile Include="..\..\cl_dll\death.cpp" />
@@ -130,6 +133,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\cl_dll\ev_common.cpp" />
     <ClCompile Include="..\..\cl_dll\ev_hldm.cpp" />
     <ClCompile Include="..\..\cl_dll\flashlight.cpp" />
+    <ClCompile Include="..\..\cl_dll\frustum.cpp" />
     <ClCompile Include="..\..\cl_dll\GameStudioModelRenderer.cpp" />
     <ClCompile Include="..\..\cl_dll\geiger.cpp" />
     <ClCompile Include="..\..\cl_dll\health.cpp" />
@@ -150,16 +154,21 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\cl_dll\in_camera.cpp" />
     <ClCompile Include="..\..\cl_dll\menu.cpp" />
     <ClCompile Include="..\..\cl_dll\message.cpp" />
+    <ClCompile Include="..\..\cl_dll\mirrormanager.cpp" />
     <ClCompile Include="..\..\cl_dll\particleman\CBaseParticle.cpp" />
     <ClCompile Include="..\..\cl_dll\particleman\CMiniMem.cpp" />
     <ClCompile Include="..\..\cl_dll\particleman\CFrustum.cpp" />
     <ClCompile Include="..\..\cl_dll\particleman\IParticleMan_Active.cpp" />
+    <ClCompile Include="..\..\cl_dll\particle_engine.cpp" />
+    <ClCompile Include="..\..\cl_dll\propmanager.cpp" />
+    <ClCompile Include="..\..\cl_dll\rendererdefs.cpp" />
     <ClCompile Include="..\..\cl_dll\saytext.cpp" />
     <ClCompile Include="..\..\cl_dll\scoreboard.cpp" />
     <ClCompile Include="..\..\cl_dll\statusbar.cpp" />
     <ClCompile Include="..\..\cl_dll\status_icons.cpp" />
     <ClCompile Include="..\..\cl_dll\StudioModelRenderer.cpp" />
     <ClCompile Include="..\..\cl_dll\studio_util.cpp" />
+    <ClCompile Include="..\..\cl_dll\textureloader.cpp" />
     <ClCompile Include="..\..\cl_dll\text_message.cpp" />
     <ClCompile Include="..\..\cl_dll\train.cpp" />
     <ClCompile Include="..\..\cl_dll\tri.cpp" />
@@ -176,6 +185,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\cl_dll\vgui_teammenu.cpp" />
     <ClCompile Include="..\..\cl_dll\view.cpp" />
     <ClCompile Include="..\..\cl_dll\voice_status.cpp" />
+    <ClCompile Include="..\..\cl_dll\watershader.cpp" />
     <ClCompile Include="..\..\common\mathlib.cpp" />
     <ClCompile Include="..\..\common\parsemsg.cpp" />
     <ClCompile Include="..\..\dlls\crossbow.cpp" />

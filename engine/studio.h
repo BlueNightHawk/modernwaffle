@@ -152,8 +152,8 @@ typedef struct
 {
 	char label[32]; // textual name
 	char name[64];	// file name
-	int32 unused1;	// was "cache"  - index pointer
-	int unused2;	// was "data" -  hack for group 0
+	int32 cache;	// was "cache"  - index pointer
+	int data;	// was "data" -  hack for group 0
 } mstudioseqgroup_t;
 
 // sequence descriptions
@@ -325,11 +325,11 @@ typedef struct
 // lighting options
 #define STUDIO_NF_FLATSHADE 0x0001
 #define STUDIO_NF_CHROME 0x0002
-#define STUDIO_NF_FULLBRIGHT 0x0004
-#define STUDIO_NF_NOMIPS 0x0008
-#define STUDIO_NF_ALPHA 0x0010
-#define STUDIO_NF_ADDITIVE 0x0020
-#define STUDIO_NF_MASKED 0x0040
+#define STUDIO_NF_ADDITIVE 32  // buz
+#define STUDIO_NF_ALPHATEST 64 // buz
+#define STUDIO_NF_NOMIPMAP 256
+#define STUDIO_NF_FULLBRIGHT 512
+#define STUDIO_NF_SCOPE 1024
 
 // motion flags
 #define STUDIO_X 0x0001

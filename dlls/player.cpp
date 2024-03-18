@@ -349,6 +349,16 @@ void CBasePlayer::TraceAttack(entvars_t* pevAttacker, float flDamage, Vector vec
 		TraceBleed(flDamage, vecDir, ptr, bitsDamageType);
 		AddMultiDamage(pevAttacker, this, flDamage, bitsDamageType);
 	}
+
+	// RENDERERS START
+	if (BloodColor() != DONT_BLEED)
+	{
+		if (BloodColor() == BLOOD_COLOR_YELLOW || BloodColor() == BLOOD_COLOR_GREEN)
+			UTIL_StudioDecal(ptr->vecPlaneNormal, ptr->vecEndPos, "shot_alien", ENTINDEX(ptr->pHit));
+		else
+			UTIL_StudioDecal(ptr->vecPlaneNormal, ptr->vecEndPos, "shot_human", ENTINDEX(ptr->pHit));
+	}
+	// RENDERERS END
 }
 
 /*
@@ -1354,6 +1364,10 @@ void CBasePlayer::PlayerDeathThink()
 	m_iRespawnFrames = 0;
 
 	//ALERT(at_console, "Respawn\n");
+
+	// RENDERERS START
+	m_bUpdateEffects = true;
+	// RENDERERS END
 
 	respawn(pev, (m_afPhysicsFlags & PFLAG_OBSERVER) == 0); // don't copy a corpse if we're in deathcam.
 	pev->nextthink = -1;
@@ -3081,6 +3095,25 @@ ReturnSpot:
 	return pSpot->edict();
 }
 
+void CBasePlayer::SetDOF(float flDof, float flDelay)
+{
+	flDof = std::clamp(flDof, 0.0f, 1.0f);
+
+	if (flClientDOF != flDof)
+	{
+		MESSAGE_BEGIN(MSG_ONE, gmsgDOF, nullptr, pev);
+			WRITE_BYTE((float)flDof * 100.0f);
+		MESSAGE_END();
+
+		flClientDOF = flDof;
+	}
+
+	if (flDelay < 0.0f)
+		m_flResetDofTime = 0.0f;
+	else
+		m_flResetDofTime = gpGlobals->time + flDelay;
+}
+
 void CBasePlayer::Spawn()
 {
 	m_bIsSpawning = true;
@@ -3251,6 +3284,10 @@ void CBasePlayer::Precache()
 
 	if (gInitHUD)
 		m_fInitHUD = true;
+
+	// RENDERERS START
+	m_bUpdateEffects = true;
+	// RENDERERS END
 }
 
 
@@ -3632,7 +3669,7 @@ void CBasePlayer::GiveNamedItem(const char* szName, int defaultAmmo)
 
 bool CBasePlayer::FlashlightIsOn()
 {
-	return FBitSet(pev->effects, EF_BRIGHTLIGHT);
+	return FBitSet(pev->effects, EF_DIMLIGHT);
 }
 
 
@@ -3646,7 +3683,7 @@ void CBasePlayer::FlashlightTurnOn()
 	if (HasSuit())
 	{
 		EMIT_SOUND_DYN(ENT(pev), CHAN_WEAPON, SOUND_FLASHLIGHT_ON, 1.0, ATTN_NORM, 0, PITCH_NORM);
-		SetBits(pev->effects, EF_BRIGHTLIGHT);
+		SetBits(pev->effects, EF_DIMLIGHT);
 		MESSAGE_BEGIN(MSG_ONE, gmsgFlashlight, NULL, pev);
 		WRITE_BYTE(1);
 		WRITE_BYTE(m_iFlashBattery);
@@ -3660,7 +3697,7 @@ void CBasePlayer::FlashlightTurnOn()
 void CBasePlayer::FlashlightTurnOff()
 {
 	EMIT_SOUND_DYN(ENT(pev), CHAN_WEAPON, SOUND_FLASHLIGHT_OFF, 1.0, ATTN_NORM, 0, PITCH_NORM);
-	ClearBits(pev->effects, EF_BRIGHTLIGHT);
+	ClearBits(pev->effects, EF_DIMLIGHT);
 	MESSAGE_BEGIN(MSG_ONE, gmsgFlashlight, NULL, pev);
 	WRITE_BYTE(0);
 	WRITE_BYTE(m_iFlashBattery);
@@ -4358,6 +4395,15 @@ void CBasePlayer::UpdateClientData()
 		InitStatusBar();
 	}
 
+// RENDERERS START
+	if (m_bUpdateEffects)
+	{
+		ClearEffects();
+		SendInitMessages();
+		m_bUpdateEffects = false;
+	}
+	// RENDERERS END
+
 	if (m_iHideHUD != m_iClientHideHUD)
 	{
 		MESSAGE_BEGIN(MSG_ONE, gmsgHideWeapon, NULL, pev);
@@ -4506,6 +4552,16 @@ void CBasePlayer::UpdateClientData()
 		MESSAGE_END();
 	}
 
+	if (m_flResetDofTime != 0.0f && m_flResetDofTime < gpGlobals->time)
+	{
+		MESSAGE_BEGIN(MSG_ONE, gmsgDOF, nullptr, pev);
+		WRITE_BYTE(0.0f);
+		MESSAGE_END();
+
+		flClientDOF = 0.0f;
+		m_flResetDofTime = 0.0f;
+	}
+
 
 	if ((m_iTrain & TRAIN_NEW) != 0)
 	{
@@ -4616,6 +4672,40 @@ void CBasePlayer::UpdateClientData()
 	//Handled anything that needs resetting
 	m_bRestored = false;
 }
+
+// RENDERERS START
+void CBasePlayer ::ClearEffects(void)
+{
+	MESSAGE_BEGIN(MSG_ONE, gmsgSetFog, NULL, pev);
+	WRITE_SHORT(0);
+	WRITE_SHORT(0);
+	WRITE_SHORT(0);
+	WRITE_SHORT(0);
+	WRITE_SHORT(0);
+	MESSAGE_END();
+}
+// Thanks BUzer
+void CBasePlayer ::SendInitMessages(void)
+{
+	edict_t* pEdict = g_engfuncs.pfnPEntityOfEntIndex(1);
+	CBaseEntity* pEntity;
+
+	if (!pEdict)
+		return;
+
+	for (int i = 1; i < gpGlobals->maxEntities; i++, pEdict++)
+	{
+		if (pEdict->free) // Not in use
+			continue;
+
+		pEntity = CBaseEntity::Instance(pEdict);
+		if (!pEntity)
+			continue;
+
+		pEntity->SendInitMessage(this);
+	}
+}
+// RENDERERS END
 
 void CBasePlayer::UpdateCTFHud()
 {

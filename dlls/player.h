@@ -436,6 +436,20 @@ private:
 public:
 	//True if the player is currently spawning.
 	bool m_bIsSpawning = false;
+
+#ifdef CLIENT_DLL
+	void SetDOF(float flDof, float flDelay) {}
+#else
+	void SetDOF(float flDof, float flDelay);
+	float flClientDOF = 0.0f;
+	float m_flResetDofTime = 0.0f;
+#endif
+
+// RENDERERS START
+	bool m_bUpdateEffects;
+	void ClearEffects(void);
+	void SendInitMessages(void);
+	// RENDERERS END
 };
 
 inline void CBasePlayer::SetWeaponBit(int id)

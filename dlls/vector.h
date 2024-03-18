@@ -68,7 +68,7 @@ public:
 //=========================================================
 // 3D Vector
 //=========================================================
-class Vector // same data-layout as engine's vec3_t,
+class Vector // same data-layout as engine's Vector,
 {			 //		which is a vec_t[3]
 public:
 	// Construction/destruction
@@ -94,6 +94,23 @@ public:
 	[[nodiscard]] constexpr Vector operator-(const Vector& v) const { return Vector(x - v.x, y - v.y, z - v.z); }
 	[[nodiscard]] constexpr Vector operator*(float fl) const { return Vector(x * fl, y * fl, z * fl); }
 	[[nodiscard]] constexpr Vector operator/(float fl) const { return Vector(x / fl, y / fl, z / fl); }
+
+	[[nodiscard]] constexpr Vector operator+(const float* v) const { return Vector(x + v[0], y + v[1], z + v[2]); }
+	[[nodiscard]] constexpr Vector operator-(const float* v) const { return Vector(x - v[0], y - v[1], z - v[2]); }
+
+	[[nodiscard]] void operator+=(const Vector& rhs)
+	{
+		this->x = this->x + rhs.x;
+		this->y = this->y + rhs.y;
+		this->z = this->z + rhs.z;
+	}
+
+	[[nodiscard]] void operator-=(const Vector& rhs)
+	{
+		this->x = this->x - rhs.x;
+		this->y = this->y - rhs.y;
+		this->z = this->z - rhs.z;
+	}
 
 	// Methods
 	constexpr void CopyToArray(float* rgfl) const { rgfl[0] = x, rgfl[1] = y, rgfl[2] = z; }

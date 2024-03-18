@@ -730,16 +730,18 @@ bool CBaseEntity::ShouldToggle(USE_TYPE useType, bool currentState)
 }
 
 
-int CBaseEntity::DamageDecal(int bitsDamageType)
+// RENDERERS START
+char* CBaseEntity ::DamageDecal(int bitsDamageType)
 {
 	if (pev->rendermode == kRenderTransAlpha)
-		return -1;
+		return 0;
 
 	if (pev->rendermode != kRenderNormal)
-		return DECAL_BPROOF1;
+		return "shot_glass";
 
-	return DECAL_GUNSHOT1 + RANDOM_LONG(0, 4);
+	return "shot";
 }
+// RENDERERS END
 
 
 

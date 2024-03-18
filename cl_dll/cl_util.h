@@ -173,3 +173,5 @@ void VectorInverse(float* v);
 #pragma warning(disable : 4305)
 
 HSPRITE LoadSprite(const char* pszName);
+
+void V_LocalScreenShake(screen_shake_t* shake, float amplitude, float duration, float frequency);
